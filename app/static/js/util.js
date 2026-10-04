@@ -153,7 +153,7 @@ export const toastError = (e) => { if (e?.name !== "AbortError") toast(e?.messag
 function modal(html, onMount) {
   return new Promise((resolve) => {
     const back = document.createElement("div");
-    back.className = "modal-back";
+    back.className = "modal-back dialog";
     back.innerHTML = html;
     document.body.appendChild(back);
     icons(back);

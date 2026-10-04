@@ -98,6 +98,15 @@ with sync_playwright() as p:
     page.click('[aria-label="Zoom in"]')
     page.wait_for_timeout(300)
     shot(page, "05-viewer")
+    # The delete confirmation must appear on top of the full-screen viewer
+    page.click('.viewer [aria-label="Delete photo"]')
+    page.wait_for_selector(".modal-back.dialog")
+    on_top = page.evaluate("""() => { const b = document.querySelector('.modal-back.dialog [data-a="cancel"]').getBoundingClientRect();
+        return !!document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2).closest('.modal-back.dialog'); }""")
+    if not on_top:
+        errors.append("layout: confirm dialog is hidden behind the photo viewer")
+    shot(page, "05b-viewer-confirm")
+    page.click('.modal-back.dialog [data-a="cancel"]')
     page.keyboard.press("Escape")
 
     # ---- row selection + bulk bar + delete/undo
@@ -183,6 +192,13 @@ with sync_playwright() as p:
     page.set_viewport_size({"width": 390, "height": 844})
     page.wait_for_timeout(500)
     shot(page, "12-mobile")
+    hscroll = page.evaluate("""() => { const h = document.querySelector('.view:not([hidden]) .tabulator-tableholder');
+        return h ? h.scrollWidth - h.clientWidth : -1; }""")
+    if hscroll <= 0:
+        errors.append(f"layout: table doesn't scroll horizontally on mobile ({hscroll})")
+    page.evaluate("document.querySelector('.view:not([hidden]) .tabulator-tableholder').scrollLeft = 10000")
+    page.wait_for_timeout(300)
+    shot(page, "12b-mobile-scrolled")
     overflow = page.evaluate("document.documentElement.scrollWidth - innerWidth")
     if overflow > 1:
         errors.append(f"layout: page is {overflow}px wider than the mobile viewport")

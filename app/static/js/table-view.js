@@ -5,6 +5,7 @@ import { ageDays, api, confirmDialog, contextMenu, debounce, del, esc, fmtDateTi
 const TYPE_LABELS = { text: "Text", longtext: "Long text", number: "Number", date: "Date", checkbox: "Checkbox", select: "Choice list", url: "Link" };
 const SOON_DAYS = 60;
 const DEFAULT_WIDTHS = { description: 320, quantity: 120, observation: 300, photos: 110 };
+const MOBILE_WIDTHS = { description: 200, quantity: 100, observation: 190, photos: 150 };
 const isMobile = () => matchMedia("(max-width: 600px)").matches;
 
 export class TableView {
@@ -20,7 +21,7 @@ export class TableView {
     this.showCreated = JSON.parse(localStorage.getItem(`tv.created.${this.id}`) || "false");
     this.refreshTree = debounce(() => this.s.loadTree(), 700);
     el.classList.add("table-view");
-    // Switch between spreadsheet and card (collapsed) layouts when crossing the mobile breakpoint
+    // Rebuild with phone column widths when crossing the mobile breakpoint
     this.mq = matchMedia("(max-width: 600px)");
     this.onBreakpoint = () => this.data && this.render();
     this.mq.addEventListener("change", this.onBreakpoint);
@@ -233,7 +234,9 @@ export class TableView {
       const grow = { description: 3, observation: 3, quantity: 1, photos: 0 }[c.key] ?? (c.type === "longtext" ? 2 : 1);
       const base = {
         title: c.label || c.key, field: c.key, visible: !c.hidden,
-        ...(mobile ? {} : userWidth ? { width: c.width } : grow ? { widthGrow: grow } : { width: c.width }),
+        // Phones: fixed readable widths and horizontal scrolling instead of squeezing columns
+        ...(mobile ? { width: MOBILE_WIDTHS[c.key] ?? (c.type === "longtext" ? 200 : 140) }
+          : userWidth ? { width: c.width } : grow ? { widthGrow: grow } : { width: c.width }),
         minWidth: c.key === "photos" ? 150 : c.key === "quantity" ? 100 : 90, headerMenu: () => this.headerMenu(c), headerSort: c.key !== "photos",
         responsive: c.key === "description" ? 0 : c.key === "quantity" ? 1 : c.key === "photos" ? 2 : prio++,
       };
@@ -329,7 +332,7 @@ export class TableView {
   columnDialog(existing) {
     return new Promise((resolve) => {
       const back = document.createElement("div");
-      back.className = "modal-back";
+      back.className = "modal-back dialog";
       const opts = Object.entries(TYPE_LABELS).map(([k, v]) => `<option value="${k}" ${existing?.type === k ? "selected" : ""}>${v}</option>`).join("");
       back.innerHTML = `
         <form class="modal">
@@ -374,9 +377,8 @@ export class TableView {
       data: this.data.items,
       index: "id",
       height: "100%",
-      layout: "fitColumns",
-      responsiveLayout: mobile ? "collapse" : false,
-      responsiveLayoutCollapseStartOpen: false,
+      layout: mobile ? "fitData" : "fitColumns",
+      responsiveLayout: false,
       placeholder: "",
       movableRows: w && !mobile,
       movableColumns: w && !mobile,
@@ -389,7 +391,6 @@ export class TableView {
       },
       columns: [
         ...(w && !mobile ? [{ rowHandle: true, formatter: "handle", headerSort: false, frozen: true, width: 26, minWidth: 26, resizable: false }] : []),
-        ...(mobile ? [{ formatter: "responsiveCollapse", width: 30, minWidth: 30, hozAlign: "center", resizable: false, headerSort: false }] : []),
         ...this.columnDefs(),
       ],
       editTriggerEvent: "dblclick",

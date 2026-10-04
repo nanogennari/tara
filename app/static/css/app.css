@@ -233,7 +233,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .tabulator-menu .tabulator-menu-separator { border-top: 1px solid var(--border); }
 .tabulator-edit-list { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
 .tabulator-edit-list .tabulator-edit-list-item:hover, .tabulator-edit-list .tabulator-edit-list-item.active { background: var(--primary); color: var(--on-primary); }
-.tabulator-responsive-collapse { border-top: 1px dashed var(--border); }
+.tabulator .tabulator-tableholder { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .cell-qty { font-variant-numeric: tabular-nums; }
 .cell-qty .est { color: var(--warn); font-weight: 600; }
 .cell-date.expired { color: var(--danger); font-weight: 600; }
@@ -276,6 +276,8 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 /* ---------------- modal */
 .modal-back { position: fixed; inset: 0; background: rgba(10,12,16,.55); z-index: 50; display: grid; place-items: center; padding: 16px; animation: fade .12s; }
 @keyframes fade { from { opacity: 0; } }
+/* Confirm / prompt dialogs open on top of everything (photo viewer, guided mode, chat), below toasts */
+.modal-back.dialog { z-index: 85; }
 .modal { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-lg); width: 100%; max-width: 520px; max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; }
 .modal.wide { max-width: 1100px; }
 .modal.mid { max-width: 760px; }
