@@ -4,6 +4,7 @@
 //   confirm -> review the AI's proposal (accept / edit / ask AI to change) -> add -> back to capture
 import { api, get, icons, post, promptDialog, qtyFormat, resizeImage, runJob, toast, toastError } from "./util.js";
 import { toApi, toRow } from "./ai-wizard.js";
+import { columnDialog } from "./columns.js";
 
 const MAX_PHOTOS = 20;
 
@@ -214,6 +215,14 @@ export function guidedComponent() {
       this.rows.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(this.rows[i])), possible_duplicates: [] });
     },
     removePhoto(r, pi) { r.photo_indexes = r.photo_indexes.filter((x) => x !== pi); },
+    /** Add a custom field to the current table without leaving guided mode. */
+    async addField() {
+      const col = await columnDialog(this.table.id);
+      if (!col) return;
+      try { this.table = await get(`/api/tables/${this.table.id}`); }
+      catch (e) { toastError(e); }
+      toast(`Field “${col.label}” added to ${this.table.name}`);
+    },
     retake() { this.discardDraft(); this.step = "capture"; },
     recordAdded(items) {
       for (const it of items) this.added.unshift({ id: it.id, description: it.description, qty: it.quantity_display, table: this.table.name, thumb: it.photos[0]?.thumb });

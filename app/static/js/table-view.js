@@ -2,8 +2,8 @@
 import { ageDays, api, confirmDialog, contextMenu, debounce, del, esc, fmtDateTime, get, icon, icons,
   patch, post, promptDialog, put, qtyFormat, relTime, tablePicker, toast, toastError } from "./util.js";
 import { gridDefault, saveTablePrefs, screenSize, setGridDefault, tablePrefs } from "./prefs.js";
+import { TYPE_LABELS, columnDialog } from "./columns.js";
 
-const TYPE_LABELS = { text: "Text", longtext: "Long text", number: "Number", date: "Date", checkbox: "Checkbox", select: "Choice list", url: "Link" };
 const SOON_DAYS = 60;
 
 // ---- Row density & text size presets (values saved per user, per table, per screen size)
@@ -384,43 +384,8 @@ export class TableView {
     catch (e) { toastError(e); }
   }
 
-  columnDialog(existing) {
-    return new Promise((resolve) => {
-      const back = document.createElement("div");
-      back.className = "modal-back dialog";
-      const opts = Object.entries(TYPE_LABELS).map(([k, v]) => `<option value="${k}" ${existing?.type === k ? "selected" : ""}>${v}</option>`).join("");
-      back.innerHTML = `
-        <form class="modal">
-          <div class="modal-head"><h2>${existing ? "Edit column" : "Add column"}</h2></div>
-          <div class="modal-body">
-            <label>Name<input name="label" required value="${esc(existing?.label || "")}" placeholder="e.g. Expiry, Brand, Size"></label>
-            <label>Type<select name="type">${opts}</select></label>
-            <label data-opts hidden>Choices (one per line)<textarea name="options" rows="4">${esc((existing?.options || []).join("\n"))}</textarea></label>
-            ${existing ? '<p class="hint">Changing the type converts existing values; values that don\'t fit become empty.</p>' : ""}
-          </div>
-          <div class="modal-foot"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn btn-primary">${existing ? "Save" : "Add column"}</button></div>
-        </form>`;
-      document.body.appendChild(back);
-      const form = back.querySelector("form");
-      const sync = () => { back.querySelector("[data-opts]").hidden = form.type.value !== "select"; };
-      form.type.addEventListener("change", sync);
-      sync();
-      form.label.focus();
-      const close = () => { back.remove(); resolve(); };
-      back.querySelector("[data-cancel]").onclick = close;
-      back.addEventListener("keydown", (e) => e.key === "Escape" && close());
-      form.onsubmit = async (e) => {
-        e.preventDefault();
-        const body = { label: form.label.value.trim(), type: form.type.value,
-          options: form.options.value.split("\n").map((s) => s.trim()).filter(Boolean) };
-        try {
-          if (existing) await patch(`/api/tables/${this.id}/columns/${encodeURIComponent(existing.key)}`, body);
-          else await post(`/api/tables/${this.id}/columns`, body);
-          close();
-          this.load({ quiet: true });
-        } catch (err) { toastError(err); }
-      };
-    });
+  async columnDialog(existing) {
+    if (await columnDialog(this.id, existing)) this.load({ quiet: true });
   }
 
   // ------------------------------------------------------------ grid
