@@ -4,6 +4,35 @@ import { ageDays, api, confirmDialog, contextMenu, debounce, del, esc, fmtDateTi
 
 const TYPE_LABELS = { text: "Text", longtext: "Long text", number: "Number", date: "Date", checkbox: "Checkbox", select: "Choice list", url: "Link" };
 const SOON_DAYS = 60;
+
+// ---- Row density & text size (user preference, all tables) -------------------------
+const ROW_PRESETS = [["Compact", 28], ["Normal", 36], ["Comfortable", 48], ["Large photos", 80]];
+const FONT_PRESETS = [["Small", 12], ["Normal", 13], ["Large", 15], ["Extra large", 17]];
+const VIEW_KEY = "grid.view";
+export const gridView = { rowH: 36, font: 13, ...JSON.parse(localStorage.getItem(VIEW_KEY) || "{}") };
+
+export function applyGridView() {
+  const { rowH, font } = gridView;
+  const line = Math.round(font * 1.45);
+  const thumb = Math.max(20, rowH - 8);
+  const root = document.documentElement.style;
+  root.setProperty("--grid-font", `${font}px`);
+  root.setProperty("--row-h", `${rowH}px`);
+  root.setProperty("--cell-pad", `${Math.max(3, Math.round((rowH - line) / 2))}px`);
+  root.setProperty("--thumb", `${thumb}px`);
+  root.setProperty("--photo-pad", `${Math.max(2, Math.round((rowH - thumb) / 2))}px`);
+}
+applyGridView();
+
+function setGridView(patch) {
+  Object.assign(gridView, patch);
+  localStorage.setItem(VIEW_KEY, JSON.stringify(gridView));
+  applyGridView();
+  window.dispatchEvent(new CustomEvent("grid:view"));
+}
+
+/** How many thumbnails fit in the photo cell at the current size. */
+const thumbsShown = () => (gridView.rowH <= 40 ? 3 : gridView.rowH <= 56 ? 2 : 1);
 const DEFAULT_WIDTHS = { description: 320, quantity: 120, observation: 300, photos: 110 };
 const MOBILE_WIDTHS = { description: 200, quantity: 100, observation: 190, photos: 150 };
 const isMobile = () => matchMedia("(max-width: 600px)").matches;
@@ -21,6 +50,9 @@ export class TableView {
     this.showCreated = JSON.parse(localStorage.getItem(`tv.created.${this.id}`) || "false");
     this.refreshTree = debounce(() => this.s.loadTree(), 700);
     el.classList.add("table-view");
+    // Re-measure rows when row height / text size changes (any table's View panel)
+    this.onGridView = () => this.grid?.redraw(true);
+    window.addEventListener("grid:view", this.onGridView);
     // Rebuild with phone column widths when crossing the mobile breakpoint
     this.mq = matchMedia("(max-width: 600px)");
     this.onBreakpoint = () => this.data && this.render();
@@ -100,6 +132,7 @@ export class TableView {
           <span class="sep hide-sm"></span>` : ""}
         <input class="filter" type="search" placeholder="Filter rows…" value="${esc(this.filterText)}" aria-label="Filter rows">
         <span class="grow"></span>
+        <button class="btn" data-act="view" title="Row height and text size">${icon("rows-3")}<span class="label-sm">View</span></button>
         <button class="btn" data-act="columns">${icon("columns-3")}<span class="label-sm">Columns</span></button>
         <button class="btn" data-act="export">${icon("download")}<span class="label-sm">Export</span></button>
         <button class="btn btn-icon" data-act="more" aria-label="More table actions">${icon("more-horizontal")}</button>
@@ -116,7 +149,11 @@ export class TableView {
     this.grid = null;
   }
 
-  close() { this.mq.removeEventListener("change", this.onBreakpoint); this.destroy(); }
+  close() {
+    this.mq.removeEventListener("change", this.onBreakpoint);
+    window.removeEventListener("grid:view", this.onGridView);
+    this.destroy();
+  }
 
   onShow() { this.grid?.redraw(); }
 
@@ -140,6 +177,7 @@ export class TableView {
         "add-row": () => this.addRow(),
         ai: () => window.dispatchEvent(new CustomEvent("ai:open", { detail: { tableId: this.id } })),
         columns: () => this.columnsMenu(r.left, r.bottom + 4),
+        view: () => viewPanel(b),
         export: () => contextMenu(r.left, r.bottom + 4, [
           { label: "Excel (.xlsx) with photos", icon: "file-spreadsheet", action: () => { location.href = `/api/export/xlsx?tables=${this.id}`; } },
           { label: "CSV", icon: "file-text", action: () => { location.href = `/api/tables/${this.id}/export.csv`; } },
@@ -581,15 +619,16 @@ export class TableView {
     const item = cell.getRow().getData();
     const wrap = document.createElement("div");
     wrap.className = "thumbs";
-    const shown = item.photos.slice(0, 3);
+    const max = thumbsShown();
+    const shown = item.photos.slice(0, max);
     wrap.innerHTML = shown.map((p, i) => `<img src="${p.thumb}" alt="Photo ${i + 1}" loading="lazy" data-i="${i}">`).join("")
-      + (item.photos.length > 3 ? `<span class="more-n">+${item.photos.length - 3}</span>` : "")
+      + (item.photos.length > max ? `<span class="more-n">+${item.photos.length - max}</span>` : "")
       + (this.writable ? `<button class="add-photo" title="Add photos (or drop files here)" aria-label="Add photos">${icon("image-plus")}</button>` : "");
     wrap.addEventListener("click", (e) => {
       e.stopPropagation();
       const img = e.target.closest("img");
       if (img) return this.openViewer(item.id, Number(img.dataset.i));
-      if (e.target.closest(".more-n")) return this.openViewer(item.id, 3);
+      if (e.target.closest(".more-n")) return this.openViewer(item.id, max);
       if (e.target.closest(".add-photo")) this.pickPhotos(item.id);
     });
     onRendered(() => {
@@ -698,6 +737,52 @@ export class TableView {
       this.refreshTree();
     } catch (e) { toastError(e); }
   }
+}
+
+// ------------------------------------------------------------ View panel (density / text size)
+
+let openPanel = null;
+function viewPanel(anchor) {
+  if (openPanel) { openPanel.remove(); openPanel = null; return; }
+  const p = document.createElement("div");
+  p.className = "view-panel";
+  p.setAttribute("role", "dialog");
+  p.setAttribute("aria-label", "Table view settings");
+  const render = () => {
+    const near = (v, presets) => presets.find(([, x]) => x === v)?.[1];
+    p.innerHTML = `
+      <h3>Row height</h3>
+      <div class="seg">${ROW_PRESETS.map(([l, v]) => `<button data-row="${v}" class="${near(gridView.rowH, ROW_PRESETS) === v ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
+      <div class="row small"><input type="range" min="26" max="160" step="2" value="${gridView.rowH}" aria-label="Row height">
+        <span class="mono" style="width:44px;text-align:right">${gridView.rowH}px</span></div>
+      <h3>Text size</h3>
+      <div class="seg">${FONT_PRESETS.map(([l, v]) => `<button data-font="${v}" class="${gridView.font === v ? "on" : ""}">${esc(l)}</button>`).join("")}</div>`;
+    p.querySelector("input[type=range]").addEventListener("input", (e) => {
+      setGridView({ rowH: Number(e.target.value) });
+      p.querySelector(".mono").textContent = `${gridView.rowH}px`;
+      p.querySelectorAll("[data-row]").forEach((b) => b.classList.toggle("on", Number(b.dataset.row) === gridView.rowH));
+    });
+  };
+  p.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.row) setGridView({ rowH: Number(b.dataset.row) });
+    if (b.dataset.font) setGridView({ font: Number(b.dataset.font) });
+    render();
+  });
+  render();
+  document.body.appendChild(p);
+  const r = anchor.getBoundingClientRect();
+  p.style.top = `${r.bottom + 6}px`;
+  p.style.left = `${Math.max(8, Math.min(r.right - 300, innerWidth - 308))}px`;
+  openPanel = p;
+  const close = (e) => {
+    if (e.type === "keydown" ? e.key !== "Escape" : (p.contains(e.target) || anchor.contains(e.target))) return;
+    p.remove(); openPanel = null;
+    document.removeEventListener("mousedown", close, true);
+    document.removeEventListener("keydown", close, true);
+  };
+  setTimeout(() => { document.addEventListener("mousedown", close, true); document.addEventListener("keydown", close, true); });
 }
 
 // ------------------------------------------------------------ column helpers
