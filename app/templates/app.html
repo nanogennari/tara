@@ -233,7 +233,13 @@
         <template x-for="(r, i) in rows" :key="i + ':' + r.description">
           <div class="g-item" :class="!r.include && 'off'">
             <input type="checkbox" x-model="r.include" aria-label="Include">
-            <div class="g-item-photos"><template x-for="pi in r.photo_indexes.slice(0, 2)"><img :src="photoFor(pi)?.thumb" alt=""></template></div>
+            <div class="g-item-photos">
+              <template x-for="pi in r.photo_indexes" :key="pi">
+                <span class="thumb-x"><img :src="photoFor(pi)?.thumb" alt="">
+                  <button type="button" @click="removePhoto(r, pi)" aria-label="Remove this photo from the item" title="Remove this photo">×</button></span>
+              </template>
+              <button type="button" class="btn btn-ghost btn-icon btn-sm" title="Duplicate item" @click="duplicateRow(i)"><i data-lucide="copy-plus"></i></button>
+            </div>
             <div class="grow stack" style="gap:6px;min-width:0">
               <input x-model="r.description" aria-label="Description">
               <div class="row" style="gap:6px">
@@ -468,10 +474,15 @@
                     </td>
                   </template>
                   <td><div class="thumbs">
-                    <template x-for="pi in r.photo_indexes"><img :src="photoFor(pi)?.thumb" alt="" @click="previewProposal(pi)" :title="'Photo ' + (pi + 1)"></template>
+                    <template x-for="pi in r.photo_indexes" :key="pi">
+                      <span class="thumb-x"><img :src="photoFor(pi)?.thumb" alt="" @click="previewProposal(pi)" :title="'Photo ' + (pi + 1)">
+                        <button type="button" @click="removePhoto(r, pi)" :aria-label="'Remove photo ' + (pi + 1) + ' from this item'" title="Remove this photo from the item">×</button></span>
+                    </template>
+                    <span class="small muted" x-show="!r.photo_indexes.length">no photo</span>
                   </div></td>
                   <td><div class="row" style="gap:2px">
                     <button class="btn btn-ghost btn-icon btn-sm" title="Ask AI to change this row" @click="openRowRefine(i)"><i data-lucide="sparkles"></i></button>
+                    <button class="btn btn-ghost btn-icon btn-sm" title="Duplicate row" @click="duplicateRow(i)"><i data-lucide="copy-plus"></i></button>
                     <button class="btn btn-ghost btn-icon btn-sm" title="Remove row" @click="removeRow(i)"><i data-lucide="trash-2"></i></button>
                   </div></td>
                 </tr>

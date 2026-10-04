@@ -182,6 +182,14 @@ export function aiWizardComponent() {
       this.$nextTick(() => this.$root.querySelector(`[data-refine="${i}"]`)?.focus());
     },
     removeRow(i) { this.versions.push(JSON.parse(JSON.stringify(this.rows))); this.rows.splice(i, 1); },
+    duplicateRow(i) {
+      this.versions.push(JSON.parse(JSON.stringify(this.rows)));
+      this.rows.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(this.rows[i])), possible_duplicates: [], changed: true });
+    },
+    removePhoto(r, pi) {
+      this.versions.push(JSON.parse(JSON.stringify(this.rows)));
+      r.photo_indexes = r.photo_indexes.filter((x) => x !== pi);
+    },
     toggleAll(v) { this.rows.forEach((r) => (r.include = v)); },
 
     async commit() {

@@ -210,6 +210,10 @@ export function guidedComponent() {
       this.proposal = null;
       this.rows = [];
     },
+    duplicateRow(i) {
+      this.rows.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(this.rows[i])), possible_duplicates: [] });
+    },
+    removePhoto(r, pi) { r.photo_indexes = r.photo_indexes.filter((x) => x !== pi); },
     retake() { this.discardDraft(); this.step = "capture"; },
     recordAdded(items) {
       for (const it of items) this.added.unshift({ id: it.id, description: it.description, qty: it.quantity_display, table: this.table.name, thumb: it.photos[0]?.thumb });
