@@ -33,6 +33,7 @@ function createStore(boot) {
     loaded: false,
     expanded: new Set(LS.get("tree.expanded", [])),
     showArchived: LS.get("tree.showArchived", true),
+    treeSort: LS.get("tree.sort", "name"),
     sel: { folders: new Set(), tables: new Set(), anchor: null },
     selCount: 0,
     tabs: LS.get("tabs.open", []),
@@ -81,6 +82,7 @@ function createStore(boot) {
       LS.set("tree.expanded", [...this.expanded]);
       this.redrawTree();
     },
+    setTreeSort(v) { this.treeSort = v; LS.set("tree.sort", v); this.redrawTree(); },
     setShowArchived(v) { this.showArchived = v; LS.set("tree.showArchived", v); this.redrawTree(); },
     clearSelection() { this.sel.folders.clear(); this.sel.tables.clear(); this.sel.anchor = null; this.selCount = 0; this.redrawTree(); },
     updateSelCount() {

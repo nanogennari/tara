@@ -9,6 +9,8 @@ export function renderTree(root, s) {
   for (const f of s.folders) if (showArch || f.effective_active) (byParent[`f${f.parent_id ?? "root"}`] ||= []).push(f);
   const tablesBy = {};
   for (const t of s.tables) if (showArch || t.effective_active) (tablesBy[t.folder_id ?? "root"] ||= []).push(t);
+  const cmp = sorter(s.treeSort);
+  for (const list of [...Object.values(byParent), ...Object.values(tablesBy)]) list.sort(cmp);
 
   const activeTab = s.tabs.find((t) => t.key === s.activeKey);
   const order = []; // visible node order for shift-range selection
@@ -58,6 +60,40 @@ export function renderTree(root, s) {
   icons(root);
   root._order = order;
   if (!root._wired) wire(root, s);
+}
+
+export const TREE_SORTS = [
+  { key: "name", label: "Name (A–Z)", icon: "arrow-down-a-z" },
+  { key: "name-desc", label: "Name (Z–A)", icon: "arrow-up-z-a" },
+  { key: "updated", label: "Recently updated", icon: "clock-arrow-down" },
+  { key: "updated-asc", label: "Least recently updated", icon: "clock-arrow-up" },
+];
+
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+// Siblings are sorted among themselves; folders always come before tables. Never-updated nodes go last.
+function sorter(mode) {
+  const byName = (a, b) => collator.compare(a.name, b.name);
+  if (mode === "name-desc") return (a, b) => byName(b, a);
+  if (mode === "updated" || mode === "updated-asc") {
+    const dir = mode === "updated" ? -1 : 1;
+    return (a, b) => {
+      const x = a.content_updated_at, y = b.content_updated_at;
+      if (x === y) return byName(a, b);
+      if (!x) return 1;
+      if (!y) return -1;
+      return (x < y ? -1 : 1) * dir;
+    };
+  }
+  return byName;
+}
+
+/** Sort-order menu for the sidebar header. */
+export function sortMenu(s, el) {
+  const r = el.getBoundingClientRect();
+  contextMenu(r.left, r.bottom, TREE_SORTS.map((o) => ({
+    label: o.label, icon: s.treeSort === o.key ? "check" : o.icon, action: () => s.setTreeSort(o.key),
+  })));
 }
 
 function dateMeta(iso, staleDays) {

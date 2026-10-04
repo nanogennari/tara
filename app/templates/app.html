@@ -52,6 +52,8 @@
             <button class="btn btn-ghost btn-icon btn-sm" title="Import XLSX" @click="$dispatch('import:open', {folderId: null})"><i data-lucide="file-spreadsheet"></i></button>
           </div>
         </template>
+        <button class="btn btn-ghost btn-icon btn-sm" title="Sort folders and tables" aria-label="Sort folders and tables"
+                @click="import('/static/js/tree.js').then(m => m.sortMenu(s, $el))"><i data-lucide="arrow-up-down"></i></button>
         <button class="btn btn-ghost btn-icon btn-sm" x-show="s.showArchived" title="Archived tables are shown — click to hide them" @click="s.setShowArchived(false)"><i data-lucide="eye"></i></button>
         <button class="btn btn-ghost btn-icon btn-sm" x-show="!s.showArchived" x-cloak title="Archived tables are hidden — click to show them" @click="s.setShowArchived(true)"><i data-lucide="eye-off"></i></button>
       </div>
