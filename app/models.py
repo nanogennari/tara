@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from flask_login import UserMixin
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, text
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,7 +53,7 @@ class User(UserMixin, db.Model):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_login: Mapped[datetime | None] = mapped_column(DateTime)
     # Personal UI preferences, e.g. {"grid": {"rowH": 36, "font": 13}, "tables": {"12": {...}}}
-    prefs: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict)
+    prefs: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict, server_default=text("'{}'"))
 
     def set_password(self, pw: str):
         self.password_hash = _ph.hash(pw)
