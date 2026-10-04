@@ -131,7 +131,11 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .topbar > .searchbox { flex-shrink: 1; }
 .topbar .brand { flex-shrink: 1; min-width: 0; }
 .searchbox kbd { margin-left: auto; }
-.menu-btn { display: none; }
+.menu-btn { display: inline-flex; }
+@media (min-width: 901px) {
+  .body.collapsed { grid-template-columns: minmax(0, 1fr); }
+  .body.collapsed > .sidebar { display: none; }
+}
 .body { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 0; }
 .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; position: relative; }
 .sidebar-head { display: flex; align-items: center; gap: 4px; padding: 10px 10px 6px 14px; }
@@ -245,11 +249,21 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .cell-date.soon { color: var(--warn); font-weight: 600; }
 .ai-badge { display: inline-flex; vertical-align: 1px; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--primary-text); background: var(--primary-soft); border-radius: 4px; padding: 0 5px; line-height: 16px; }
 .thumbs { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-.thumbs img { width: 40px; height: 40px; object-fit: cover; border-radius: 5px; border: 1px solid var(--border); cursor: zoom-in; background: var(--surface-2); }
+.thumbs img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); cursor: zoom-in; background: var(--surface-2); }
 .thumbs img:hover { outline: 2px solid var(--primary); }
 .thumbs .more-n { font-size: 11px; color: var(--muted); font-weight: 600; }
-.thumbs .add-photo { width: 40px; height: 40px; border: 1px dashed var(--border-strong); border-radius: 5px; display: grid; place-items: center; color: var(--muted); cursor: pointer; background: none; padding: 0; }
+.thumbs .add-photo { width: 28px; height: 28px; border: 1px dashed var(--border-strong); border-radius: 5px; display: grid; place-items: center; color: var(--muted); cursor: pointer; background: none; padding: 0; }
 .thumbs .add-photo:hover { color: var(--primary-text); border-color: var(--primary); }
+.thumbs .add-photo svg.lucide { width: 14px; height: 14px; }
+.tabulator-row .tabulator-cell.cell-photos { padding-top: 3px; padding-bottom: 3px; }
+.thumbs { flex-wrap: nowrap; }
+/* Row head: drag grip + checkbox in one pinned column */
+.tabulator-row .tabulator-cell.row-head { padding: 0; }
+.row-head-inner { display: flex; align-items: center; justify-content: center; gap: 6px; height: 100%; min-height: 34px; }
+.row-head-inner .grip { width: 8px; height: 14px; cursor: grab; opacity: .45;
+  background-image: radial-gradient(currentColor 1.2px, transparent 1.3px); background-size: 4px 4.6px; color: var(--muted); }
+.tabulator-row:hover .row-head-inner .grip { opacity: 1; }
+.row-head-inner .row-check { margin: 0; cursor: pointer; }
 .tabulator-cell.drop-hover { background: rgba(var(--primary-rgb), .14) !important; box-shadow: inset 0 0 0 2px var(--primary); }
 .updated-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .md-show { display: none; }
@@ -347,6 +361,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .review tr.changed td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
 .review input, .review textarea, .review select { font-size: 13px; padding: 5px 7px; min-height: 30px; }
 .review textarea { min-height: 30px; height: 30px; }
+.review .thumbs { flex-wrap: wrap; }
 .review .thumbs img { width: 34px; height: 34px; }
 .review .conf-low { color: var(--danger); } .review .conf-medium { color: var(--warn); } .review .conf-high { color: var(--ok); }
 .dupe { font-size: 11px; color: var(--warn); margin-top: 4px; display: flex; gap: 4px; align-items: center; }
@@ -457,7 +472,6 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 
 /* ============================================================ responsive */
 @media (max-width: 900px) {
-  .menu-btn { display: inline-flex; }
   .body { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: fixed; top: var(--header-h); bottom: 0; left: 0; width: min(86vw, 320px); z-index: 40; transform: translateX(-102%); transition: transform .2s ease; box-shadow: var(--shadow-lg); }
   .sidebar.open { transform: none; }

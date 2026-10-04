@@ -31,6 +31,16 @@ function createStore(boot) {
     tabs: LS.get("tabs.open", []),
     activeKey: LS.get("tabs.active", null),
     sidebarOpen: false,
+    sidebarCollapsed: LS.get("sidebar.collapsed", false),
+
+    /** ☰ / Ctrl+B: drawer on phones, collapse/expand on wider screens. */
+    toggleSidebar() {
+      if (matchMedia("(max-width: 900px)").matches) { this.sidebarOpen = !this.sidebarOpen; return; }
+      this.sidebarCollapsed = !this.sidebarCollapsed;
+      LS.set("sidebar.collapsed", this.sidebarCollapsed);
+      // The grid needs to re-measure after its container width changes
+      setTimeout(() => this.view(this.activeKey)?.onShow?.(), 50);
+    },
 
     // ---------------------------------------------------- tree data
     async loadTree() {
@@ -267,6 +277,7 @@ document.addEventListener("alpine:init", () => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); window.dispatchEvent(new CustomEvent("palette:open")); }
       else if (mod && e.key.toLowerCase() === "j") { e.preventDefault(); window.dispatchEvent(new CustomEvent("chat:toggle")); }
+      else if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); this.s.toggleSidebar(); }
       else if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
         e.preventDefault(); window.dispatchEvent(new CustomEvent("palette:open"));
       }

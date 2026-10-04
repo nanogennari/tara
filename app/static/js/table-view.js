@@ -384,13 +384,14 @@ export class TableView {
       movableColumns: w && !mobile,
       selectableRows: "highlight",
       selectableRowsRangeMode: "click",
+      // One pinned column: drag grip (reorder) + selection checkbox
       rowHeader: {
-        formatter: "rowSelection", titleFormatter: "rowSelection", headerSort: false, resizable: false,
-        frozen: true, width: 34, hozAlign: "center", headerHozAlign: "center", responsive: 0,
-        cellClick: (e, cell) => cell.getRow().toggleSelect(),
+        titleFormatter: "rowSelection", headerSort: false, resizable: false, frozen: true,
+        width: w && !mobile ? 52 : 36, hozAlign: "center", headerHozAlign: "center",
+        rowHandle: w && !mobile, cssClass: "row-head",
+        formatter: (cell) => this.rowHeadCell(cell, w && !mobile),
       },
       columns: [
-        ...(w && !mobile ? [{ rowHandle: true, formatter: "handle", headerSort: false, frozen: true, width: 26, minWidth: 26, resizable: false }] : []),
         ...this.columnDefs(),
       ],
       editTriggerEvent: "dblclick",
@@ -417,6 +418,9 @@ export class TableView {
     }, 400));
     g.on("columnMoved", () => this.saveColumnOrder());
     g.on("rowSelectionChanged", (_d, rows) => this.renderBulk(rows));
+    const sync = (row, on) => { const cb = row.getElement().querySelector(".row-check"); if (cb) cb.checked = on; };
+    g.on("rowSelected", (row) => sync(row, true));
+    g.on("rowDeselected", (row) => sync(row, false));
 
     this.el.addEventListener("keydown", (e) => {
       if (!w || !["Delete", "Backspace"].includes(e.key)) return;
@@ -424,6 +428,37 @@ export class TableView {
       const sel = this.grid?.getSelectedRows() || [];
       if (sel.length) { e.preventDefault(); this.bulkAction("delete"); }
     });
+  }
+
+  rowHeadCell(cell, movable) {
+    const row = cell.getRow();
+    const wrap = document.createElement("div");
+    wrap.className = "row-head-inner";
+    if (movable) wrap.insertAdjacentHTML("beforeend", '<span class="grip" title="Drag to reorder" aria-hidden="true"></span>');
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "row-check";
+    cb.checked = row.isSelected();
+    cb.setAttribute("aria-label", "Select row");
+    cb.addEventListener("mousedown", (e) => e.stopPropagation()); // never start a drag from the checkbox
+    cb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault(); // state is driven by Tabulator's selection (synced in rowSelected/rowDeselected)
+      const rows = this.grid.getRows("active");
+      if (e.shiftKey && this.lastChecked) {
+        const a = rows.indexOf(this.lastChecked), b = rows.indexOf(row);
+        if (a >= 0 && b >= 0) {
+          const select = !row.isSelected();
+          rows.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((r) => (select ? r.select() : r.deselect()));
+          this.lastChecked = row;
+          return;
+        }
+      }
+      row.toggleSelect();
+      this.lastChecked = row;
+    });
+    wrap.appendChild(cb);
+    return wrap;
   }
 
   applyFilter() {

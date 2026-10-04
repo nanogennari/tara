@@ -75,6 +75,51 @@ with sync_playwright() as p:
     expect(page.locator(".updated-chip")).to_contain_text("Updated")
     shot(page, "04-table")
 
+    # ---- rows with photos stay one line tall
+    # (the photo cell must not be what makes a row taller than one line of text)
+    heights = page.evaluate("""() => [...document.querySelectorAll('.view:not([hidden]) .tabulator-cell.cell-photos')]
+        .filter(c => c.querySelector('.thumbs img')).map(c => c.querySelector('.thumbs').getBoundingClientRect().height)""")
+    tall = [h for h in heights if h > 30]
+    if tall:
+        errors.append(f"layout: {len(tall)} photo rows taller than one line: {tall[:3]}")
+
+    # ---- reorder by dragging the grip in the row head column; must persist after reload
+    names = lambda: page.locator(".view:not([hidden]) .tabulator-row .tabulator-cell[tabulator-field=description]").all_inner_texts()
+    before = names()
+    grip = page.locator(".view:not([hidden]) .tabulator-row").nth(0).locator(".grip")
+    target = page.locator(".view:not([hidden]) .tabulator-row").nth(2)
+    gb, tb = grip.bounding_box(), target.bounding_box()
+    page.mouse.move(gb["x"] + 4, gb["y"] + 7)
+    page.mouse.down()
+    page.wait_for_timeout(250)
+    page.mouse.move(gb["x"] + 4, tb["y"] + tb["height"] * 0.8, steps=12)
+    page.mouse.up()
+    page.wait_for_timeout(800)
+    after = names()
+    if after[:3] == before[:3]:
+        errors.append("rows: dragging the grip did not reorder rows")
+    page.reload()
+    page.wait_for_selector(".view:not([hidden]) .tabulator-row")
+    if names()[:3] != after[:3]:
+        errors.append(f"rows: new order not saved ({names()[:3]} vs {after[:3]})")
+
+    # ---- collapsible sidebar: table gets the full width, state survives reload
+    w0 = page.locator(".view:not([hidden]) .tabulator").bounding_box()["width"]
+    page.click(".menu-btn")
+    page.wait_for_timeout(300)
+    if page.locator(".sidebar").is_visible():
+        errors.append("sidebar: did not collapse")
+    w1 = page.locator(".view:not([hidden]) .tabulator").bounding_box()["width"]
+    if w1 < w0 + 200:
+        errors.append(f"sidebar: table did not widen after collapsing ({w0} -> {w1})")
+    shot(page, "04b-sidebar-collapsed")
+    page.reload()
+    page.wait_for_selector(".view:not([hidden]) .tabulator-row")
+    if page.locator(".sidebar").is_visible():
+        errors.append("sidebar: collapsed state not remembered")
+    page.keyboard.press("Control+b")
+    page.wait_for_selector(".sidebar", state="visible")
+
     # ---- inline edit a cell
     cell = page.locator('.tabulator-row').first.locator('.tabulator-cell[tabulator-field="observation"]')
     cell.click()

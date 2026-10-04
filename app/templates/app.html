@@ -6,7 +6,8 @@
 <div class="shell" x-data="shell" @paste.window="$dispatch('wizard-paste', $event)">
   <!-- ======================================================= top bar -->
   <header class="topbar">
-    <button class="btn btn-ghost btn-icon menu-btn" @click="s.sidebarOpen = !s.sidebarOpen" aria-label="Toggle folders"><i data-lucide="menu"></i></button>
+    <button class="btn btn-ghost btn-icon menu-btn" @click="s.toggleSidebar()" :aria-expanded="!s.sidebarCollapsed"
+            aria-label="Show or hide the folder sidebar" title="Show / hide sidebar (Ctrl+B)"><i data-lucide="menu"></i></button>
     <a class="brand" href="/">
       {% if brand['app.logo'] %}
         <img src="{{ url_for('main.branding', name=brand['app.logo']) }}?v={{ brand_version }}" alt="">
@@ -39,7 +40,7 @@
     </div>
   </header>
 
-  <div class="body">
+  <div class="body" :class="s.sidebarCollapsed && 'collapsed'">
     <!-- ===================================================== sidebar -->
     <aside class="sidebar" :class="s.sidebarOpen && 'open'" aria-label="Folders and tables">
       <div class="sidebar-head">
