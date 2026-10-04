@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block vendor_css %}<link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabulator.min.css') }}">{% endblock %}
 {% block body %}
-<script type="application/json" id="boot">{{ {"user": user_json, "staleDays": stale_days, "timezone": timezone} | tojson }}</script>
+<script type="application/json" id="boot">{{ {"user": user_json, "staleDays": stale_days, "timezone": timezone, "open": open_target} | tojson }}</script>
 
 <div class="shell" x-data="shell" @paste.window="$dispatch('wizard-paste', $event)">
   <!-- ======================================================= top bar -->

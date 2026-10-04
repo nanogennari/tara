@@ -303,6 +303,31 @@ with sync_playwright() as p:
     anon.goto(link)
     anon.wait_for_selector("text=You've been invited")
     anon.screenshot(path=str(OUT / "22-join.png"))
+
+    # ---- deep links: address bar follows the active tab; item link survives the login
+    page.goto(BASE + "/")
+    page.wait_for_selector(".shell")
+    page.click('.node.folder:has-text("Storage")')
+    page.click('.node.table:has-text("Zometool")')
+    page.wait_for_selector(".view:not([hidden]) .tabulator-row")
+    if "/t/" not in page.url:
+        errors.append(f"links: address bar not updated for table ({page.url})")
+    item = page.evaluate("fetch('/api/search?q=connector&limit=5').then(r => r.json()).then(d => d.results.find(x => x.type === 'item'))")
+    visitor = browser.new_context(viewport={"width": 1280, "height": 800}).new_page()
+    visitor.goto(f"{BASE}/i/{item['id']}")
+    visitor.wait_for_selector("text=Sign in to open the shared link")
+    visitor.fill("input[name=username]", "nano")
+    visitor.fill("input[name=password]", "password123")
+    visitor.click("button[type=submit]")
+    visitor.wait_for_selector(".view:not([hidden]) .tabulator-row.tabulator-selected")
+    sel = visitor.locator(".view:not([hidden]) .tabulator-row.tabulator-selected").inner_text()
+    if item["title"] not in sel:
+        errors.append(f"links: item link selected the wrong row ({sel[:60]!r})")
+    if f"/t/{item['table_id']}" not in visitor.url:
+        errors.append(f"links: unexpected URL after item link ({visitor.url})")
+    visitor.screenshot(path=str(OUT / "23-item-link.png"))
+    visitor.goto(BASE + "/t/99999")
+    visitor.wait_for_selector(".toast >> text=no longer exists")
     browser.close()
 
 print("\n".join(errors) if errors else "NO CONSOLE ERRORS")

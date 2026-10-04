@@ -14,13 +14,37 @@ bp = Blueprint("main", __name__)
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
-@bp.get("/")
-@login_required
-def index():
+def _shell(open_target=None):
     return render_template("app.html", user_json={
         "id": current_user.id, "name": current_user.name, "role": current_user.role,
         "can_edit": current_user.can_edit, "is_admin": current_user.is_admin,
-    }, stale_days=settings.get("server.stale_days"), timezone=settings.get("server.timezone") or "UTC")
+    }, stale_days=settings.get("server.stale_days"), timezone=settings.get("server.timezone") or "UTC",
+        open_target=open_target)
+
+
+@bp.get("/")
+@login_required
+def index():
+    return _shell()
+
+
+# Shareable deep links. Logged-out visitors are sent to sign in and come back here.
+@bp.get("/t/<int:table_id>")
+@login_required
+def table_link(table_id):
+    return _shell({"type": "table", "id": table_id})
+
+
+@bp.get("/i/<int:item_id>")
+@login_required
+def item_link(item_id):
+    return _shell({"type": "item", "id": item_id})
+
+
+@bp.get("/f/<int:folder_id>")
+@login_required
+def folder_link(folder_id):
+    return _shell({"type": "folder", "id": folder_id})
 
 
 @bp.get("/healthz")

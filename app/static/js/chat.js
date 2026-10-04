@@ -10,7 +10,7 @@ export function renderMarkdown(src) {
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|\W)_([^_\n]+)_(?=\W|$)/g, "$1<em>$2</em>");
   s = s.replace(/\[([^\]]+)\]\((item|table|folder):(\d+)\)/g,
-    (_, text, kind, id) => `<a href="#" class="ref ref-${kind}" data-ref="${kind}:${id}">${text}</a>`);
+    (_, text, kind, id) => `<a href="/${kind[0]}/${id}" class="ref ref-${kind}" data-ref="${kind}:${id}">${text}</a>`);
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   const lines = s.split("\n");
   let html = "", list = null;
@@ -106,7 +106,7 @@ export function chatComponent() {
     },
     onClick(e) {
       const a = e.target.closest("[data-ref]");
-      if (!a) return;
+      if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // let the browser open a new tab
       e.preventDefault();
       const [kind, id] = a.dataset.ref.split(":");
       if (kind === "item") this.s.openItem(Number(id));

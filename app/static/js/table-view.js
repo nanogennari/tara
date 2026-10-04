@@ -28,7 +28,7 @@ export class TableView {
   }
 
   // ------------------------------------------------------------ loading
-  async load({ quiet = false, rowId, highlight } = {}) {
+  async load({ quiet = false, rowId, highlight, select } = {}) {
     if (!quiet && !this.data) this.el.innerHTML = `<div class="empty-state"><span class="spinner"></span></div>`;
     try {
       this.data = await get(`/api/tables/${this.id}`);
@@ -42,7 +42,7 @@ export class TableView {
     }
     this.tab.title = this.data.name;
     this.render();
-    if (rowId) this.focusRow(rowId);
+    if (rowId) (select ? this.highlightRows([rowId]) : this.focusRow(rowId));
     if (highlight?.length) this.highlightRows(highlight);
   }
 
@@ -186,6 +186,7 @@ export class TableView {
     const ed = this.s.user.can_edit;
     const d = this.data;
     contextMenu(x, y, [
+      { label: "Copy link to this table", icon: "link", action: () => this.s.copyLink(`/t/${this.id}`) },
       this.writable && { label: "AI context & summary…", icon: "bot", action: () => this.editContext() },
       this.writable && { label: "Import rows from XLSX…", icon: "file-spreadsheet", action: () => window.dispatchEvent(new CustomEvent("import:open", { detail: { folderId: d.folder_id } })) },
       { label: "Search in this table", icon: "search", action: () => window.dispatchEvent(new CustomEvent("palette:open", { detail: { tables: [this.id] } })) },
@@ -411,6 +412,19 @@ export class TableView {
       if (def.editor && !cell.getElement().classList.contains("tabulator-editing")) cell.edit(true);
     });
     g.on("cellEdited", (cell) => this.saveCell(cell));
+    g.on("rowContext", (e, row) => {
+      if (e.target.closest(".tabulator-editing, input, textarea")) return;
+      e.preventDefault();
+      const it = row.getData();
+      contextMenu(e.clientX, e.clientY, [
+        { label: "Copy link to this item", icon: "link", action: () => this.s.copyLink(`/i/${it.id}`, "Item link") },
+        it.photos.length && { label: "View photos", icon: "image", action: () => this.openViewer(it.id, 0) },
+        w && { label: "Add photos…", icon: "image-plus", action: () => this.pickPhotos(it.id) },
+        w && { label: "Insert row below", icon: "plus", action: () => this.addRow(it.id) },
+        w && "-",
+        w && { label: "Delete row", icon: "trash-2", danger: true, action: () => { this.grid.deselectRow(); row.select(); this.bulkAction("delete"); } },
+      ]);
+    });
     g.on("rowMoved", () => this.saveOrder());
     g.on("columnResized", debounce((col) => {
       const key = colKey(col.getField());

@@ -14,7 +14,8 @@ MIN_PASSWORD = 8
 
 
 def _safe_next(target: str | None) -> str:
-    if target and target.startswith("/") and not target.startswith("//"):
+    """Only allow local paths (no //host or /\\host tricks) as post-login destinations."""
+    if target and target.startswith("/") and not target.startswith(("//", "/\\")) and "\\" not in target:
         return target
     return url_for("main.index")
 
@@ -130,7 +131,7 @@ def join(token):
             db.session.commit()
             audit("register", "user", u.id, f"invite #{inv.id}")
             login_user(u, remember=True)
-            return redirect(url_for("main.index"))
+            return redirect(_safe_next(request.args.get("next")))
     return render_template("auth/join.html", invite=inv, error=error)
 
 

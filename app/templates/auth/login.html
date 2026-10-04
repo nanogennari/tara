@@ -1,6 +1,9 @@
 {% extends "auth/_layout.html" %}
 {% block title %}Sign in · {{ brand['app.name'] }}{% endblock %}
 {% block form %}
+{% if request.args.get('next') and request.args.get('next') not in ('/', '/?') %}
+  <p class="muted small center">Sign in to open the shared link.</p>
+{% endif %}
 <form method="post" class="form-stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>Username or email<input name="username" autocomplete="username" required autofocus></label>

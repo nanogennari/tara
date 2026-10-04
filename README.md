@@ -23,6 +23,9 @@ for any physical inventory.
   It answers in your language with clickable links to items. It's read-only.
 - **Global search** (`Ctrl/⌘+K`): fuzzy text (partial words, typos) and semantic embeddings
   (meaning and PT⇄EN). You can scope it to any set of folders (subfolders included, individual children excluded) or to a single table.
+- **Shareable links** to a table (`/t/<id>`), an item (`/i/<id>`, opens the table with the row highlighted) or a
+  folder (`/f/<id>`). The address bar always shows the open tab's link, and the menus have "Copy link".
+  People who aren't signed in land right there after signing in.
 - **Who and when**: every item records who added it and when, shown in an optional grid column, in search
   results and in exports. Times follow the timezone set in Settings.
 - **Last updated** is shown on every table (header chip, tabs, tree, folder view, exports). Tables not

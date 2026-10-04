@@ -232,3 +232,27 @@ def test_invite_links(client, app):
     client.delete(f"/api/admin/invites/{one['id']}")
     assert app.test_client().get(f"/join/{one['token']}").status_code == 410
     assert app.test_client().get("/join/nope").status_code == 410
+
+
+def test_deep_links_and_login_return(app, client):
+    f = _mk(client, "/api/folders", name="Rio")
+    t = _mk(client, "/api/tables", name="Box", folder_id=f["id"])
+    it = _mk(client, f"/api/tables/{t['id']}/items", description="Tape")
+    # Logged in: the shell is served with the target to open
+    for path, target in ((f"/t/{t['id']}", '"type": "table"'), (f"/i/{it['id']}", '"type": "item"'),
+                         (f"/f/{f['id']}", '"type": "folder"')):
+        r = client.get(path)
+        assert r.status_code == 200 and target in r.get_data(as_text=True), path
+    assert client.get(f"/api/items/{it['id']}").get_json()["table_id"] == t["id"]
+
+    # Logged out: sent to sign in, then back to the same link
+    anon = app.test_client()
+    r = anon.get(f"/i/{it['id']}")
+    assert r.status_code == 302 and "/login" in r.location and f"next=/i/{it['id']}" in r.location.replace("%2F", "/")
+    r = anon.post(r.location, data={"username": "editor", "password": "password123"})
+    assert r.status_code == 302 and r.location.startswith(f"/i/{it['id']}")
+
+    # Open redirects are refused
+    for bad in ("//evil.example", "/\\evil.example", "https://evil.example"):
+        r = app.test_client().post(f"/login?next={bad}", data={"username": "viewer", "password": "password123"})
+        assert r.location == "/", bad

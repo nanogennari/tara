@@ -17,6 +17,12 @@ const LS = {
 
 const views = new Map(); // tab key -> view instance (kept alive while the tab is open)
 
+export function linkPath(tab) {
+  if (tab.type === "table") return `/t/${tab.id}`;
+  if (tab.type === "folder") return `/f/${tab.id}`;
+  return "/";
+}
+
 function createStore(boot) {
   return {
     user: boot.user,
@@ -127,6 +133,41 @@ function createStore(boot) {
       this.persistTabs();
       this.showView(key, opts);
       this.redrawTree();
+      this.syncUrl();
+    },
+    /** Keep the address bar on a shareable URL for the active tab. */
+    syncUrl() {
+      const tab = this.tabs.find((t) => t.key === this.activeKey);
+      const path = tab ? linkPath(tab) : "/";
+      if (location.pathname + location.search !== path) history.replaceState(null, "", path);
+      const brand = document.querySelector(".brand .name")?.textContent || "";
+      document.title = tab?.title ? `${tab.title} · ${brand}` : brand;
+    },
+    /** Open a deep link target ({type: table|item|folder, id}). */
+    async openLink(target) {
+      if (target.type === "table") {
+        if (this.table(target.id)) return this.openTable(target.id);
+      } else if (target.type === "folder") {
+        if (this.folder(target.id)) return this.openFolder(target.id);
+      } else if (target.type === "item") {
+        try {
+          const it = await get(`/api/items/${target.id}`);
+          if (this.table(it.table_id)) return this.openTable(it.table_id, { rowId: it.id, select: true });
+        } catch { /* fall through to the message below */ }
+      }
+      toast("That link points to something that no longer exists (it may have been deleted).", { error: true, timeout: 7000 });
+      history.replaceState(null, "", "/");
+      if (this.tabs.length) this.activate(this.tabs.find((t) => t.key === this.activeKey)?.key || this.tabs[0].key);
+    },
+    async copyLink(path, what = "Link") {
+      const url = location.origin + path;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast(`${what} copied to clipboard`);
+      } catch {
+        // Clipboard API needs HTTPS (or localhost); show the link to copy by hand
+        await promptDialog({ title: `Copy ${what.toLowerCase()}`, label: "Copy this address:", value: url, confirm: "Done" });
+      }
     },
     closeTab(key) {
       const i = this.tabs.findIndex((t) => t.key === key);
@@ -142,6 +183,7 @@ function createStore(boot) {
         if (next) this.showView(next.key);
       }
       this.persistTabs();
+      this.syncUrl();
       this.redrawTree();
     },
     persistTabs() {
@@ -192,7 +234,7 @@ function createStore(boot) {
         Object.assign(v.tab, tab);
         v.load(opts);
       } else if (opts.rowId) {
-        v.focusRow?.(opts.rowId);
+        opts.select ? v.highlightRows?.([opts.rowId]) : v.focusRow?.(opts.rowId);
       } else if (opts.highlight?.length) {
         v.highlightRows?.(opts.highlight);
       }
@@ -265,8 +307,11 @@ document.addEventListener("alpine:init", () => {
     get s() { return Alpine.store("app"); },
     async init() {
       await this.s.loadTree();
-      if (this.s.activeKey && this.s.tabs.some((t) => t.key === this.s.activeKey)) this.s.showView(this.s.activeKey);
+      const target = JSON.parse(document.getElementById("boot").textContent).open;
+      if (target) await this.s.openLink(target);
+      else if (this.s.activeKey && this.s.tabs.some((t) => t.key === this.s.activeKey)) this.s.activate(this.s.activeKey);
       else if (this.s.tabs.length) this.s.activate(this.s.tabs[0].key);
+      else this.s.syncUrl();
       this.initTabsSortable();
       this.initResizer();
       this.$watch("s.tabs", () => this.$nextTick(() => icons(document.querySelector(".tabs"))));
