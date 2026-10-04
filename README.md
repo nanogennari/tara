@@ -6,6 +6,8 @@ Spreadsheet-style tables organised in folders, items catalogued from photos by a
 and search that understands meaning. Built for SigmaCamp Brasil's boxes of camp materials, but works
 for any physical inventory.
 
+![Tara: folders in the sidebar, a table of items with photos, expiry dates and estimated quantities](docs/screenshot.png)
+
 - **Tables in nested folders**: sidebar tree, spreadsheet-like tabs, inline editing, custom columns
   (text, number, date, checkbox, choice list, link). Quantities can be exact or estimated (`~75`, `3 rolls`, `1.2 kg`).
 - **Photos**: per row; click to open a zoomable viewer; drag files onto a row to attach.
@@ -67,48 +69,6 @@ Search is fuzzy text (SQLite FTS5 trigram) merged with semantic embeddings using
 By default the embeddings come from a local multilingual model (`paraphrase-multilingual-MiniLM-L12-v2`)
 that is baked into the image, so search works offline. Under **Settings → Search** you can switch to
 OpenAI, Gemini or Ollama embeddings, check index status, and rebuild the index.
-
-## Development (NixOS / direnv)
-
-```bash
-direnv allow                                   # shell.nix: python 3.13, uv, libstdc++
-uv sync
-DATA_DIR=.devdata uv run flask --app app db upgrade
-DATA_DIR=.devdata uv run flask --app app run --debug --port 5055
-uv run pytest                                   # unit + API tests
-uv run pytest -m semantic                       # search quality on the real Rio inventory (downloads the model once)
-```
-
-After changing models: `DATA_DIR=.devdata uv run flask --app app db migrate -m "..."`.
-
-Browser tests (Playwright in Docker). `e2e/devserver.sh` starts a fresh server on :5055:
-
-```bash
-./e2e/devserver.sh &
-# UI smoke test (no AI needed), then the real-AI flow against an Ollama server:
-docker run --rm --network host --user $(id -u):$(id -g) -e HOME=/tmp -v $PWD:/w -w /w \
-  mcr.microsoft.com/playwright/python:v1.55.0-noble \
-  sh -c "pip -q install --user playwright==1.55.0 && python e2e/smoke.py http://127.0.0.1:5055"
-# ... python e2e/ai_ollama.py http://127.0.0.1:5055 http://OLLAMA_HOST:11434 qwen3.6:latest
-```
-
-For Ollama reasoning models (e.g. qwen3.6), leave "Let reasoning models think first" off in Settings. Thinking
-takes 10–20× longer, and the long reasoning can use up the output budget.
-
-### Layout
-
-```
-app/
-  models.py, quantity.py          data model; quantity parsing/formatting
-  services/                       inventory ops (soft delete, trash, archive), photos, XLSX, backup, settings
-  search/                         FTS5 + embeddings, background indexer, hybrid query
-  ai/                             prompt, per-table JSON schema, provider adapters, propose/refine/commit,
-                                  chat assistant (tool loop + tools), token usage
-  api/                            JSON REST endpoints
-  static/js/                      app shell (Alpine), tree, Tabulator grid, palette, AI wizard, viewer
-migrations/                       Alembic
-tests/, e2e/                      pytest suite, Playwright smoke tests
-```
 
 ## License
 

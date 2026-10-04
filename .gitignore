@@ -35,3 +35,7 @@ e2e/screens/
 *.swp
 .DS_Store
 .claude/settings.local.json
+
+# Local Nix dev shell (not part of the project)
+shell.nix
+.envrc
