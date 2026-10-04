@@ -277,6 +277,8 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .tabulator-row:hover .row-head-inner .grip { opacity: 1; }
 .row-head-inner .row-check { margin: 0; cursor: pointer; }
 .tabulator-cell.drop-hover { background: rgba(var(--primary-rgb), .14) !important; box-shadow: inset 0 0 0 2px var(--primary); }
+.path-link { color: var(--text-2); }
+.tabulator-row.archived-row { opacity: .6; }
 .updated-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .md-show { display: none; }
 @media (max-width: 600px) { .md-show { display: block; } }

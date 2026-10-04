@@ -187,6 +187,7 @@ function showMenu(s, kind, id, x, y) {
     const f = s.folder(id);
     return contextMenu(x, y, [
       { label: "Open folder view", icon: "layout-list", action: () => s.openFolder(id) },
+      { label: "See all items", icon: "list", action: () => s.openFolderItems(id) },
       ed && "-",
       ed && { label: "Guided add here…", icon: "scan-line", action: () => window.dispatchEvent(new CustomEvent("guided:open", { detail: { folderId: id } })) },
       ed && { label: "New table here", icon: "table-2", action: () => s.newTable(id) },

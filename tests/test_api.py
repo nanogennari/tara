@@ -282,3 +282,31 @@ def test_user_table_view_prefs(client, editor):
     editor.patch(f"/api/me/prefs/tables/{tid}?size=large", json={"hidden": None, "widths": None, "order": None, "showCreated": None, "font": None})
     editor.patch(f"/api/me/prefs/tables/{tid}?size=small", json={"rowH": None, "hidden": None})
     assert tid not in editor.get("/api/me/prefs").get_json()["tables"]
+
+
+def test_folder_all_items(client):
+    rio = _mk(client, "/api/folders", name="Rio")
+    sub = _mk(client, "/api/folders", name="Shelf", parent_id=rio["id"])
+    other = _mk(client, "/api/folders", name="Other")
+    t1 = _mk(client, "/api/tables", name="Box 1", folder_id=rio["id"])
+    t2 = _mk(client, "/api/tables", name="Box 2", folder_id=sub["id"])
+    t3 = _mk(client, "/api/tables", name="Elsewhere", folder_id=other["id"])
+    _mk(client, f"/api/tables/{t2['id']}/columns", label="Expiry", type="date")
+    _mk(client, f"/api/tables/{t1['id']}/items", description="Tape", quantity="3 rolls")
+    _mk(client, f"/api/tables/{t2['id']}/items", description="Aspirin", custom={"expiry": "2027-01-31"})
+    _mk(client, f"/api/tables/{t3['id']}/items", description="Not here")
+    gone = _mk(client, f"/api/tables/{t1['id']}/items", description="Deleted")
+    client.post("/api/items/bulk", json={"ids": [gone["id"]], "action": "delete"})
+
+    d = client.get(f"/api/folders/{rio['id']}/items").get_json()
+    by = {i["description"]: i for i in d["items"]}
+    assert set(by) == {"Tape", "Aspirin"}
+    assert by["Tape"]["path"] == "Box 1" and by["Tape"]["quantity_display"] == "3 rolls"
+    assert by["Aspirin"]["path"] == "Shelf / Box 2" and by["Aspirin"]["fields"] == "Expiry: 2027-01-31"
+
+    client.post("/api/nodes/bulk", json={"folders": [sub["id"]], "action": "archive"})
+    d = client.get(f"/api/folders/{rio['id']}/items").get_json()
+    assert [i["description"] for i in d["items"]] == ["Tape"] and d["archived_hidden"]
+    d = client.get(f"/api/folders/{rio['id']}/items?include_archived=1").get_json()
+    assert {i["description"]: i["archived"] for i in d["items"]} == {"Tape": False, "Aspirin": True}
+    assert client.get(f"/f/{rio['id']}/all").status_code == 200

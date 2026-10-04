@@ -2,6 +2,7 @@
 from flask import jsonify, request
 from flask_login import current_user
 
+from ..extensions import db
 from ..services import inventory as inv
 from ..services.audit import audit
 from ..services.tree import FolderMap, table_state, tree_payload
@@ -45,6 +46,45 @@ def folder_view(fid):
         "folders": [x for x in payload["folders"] if x["parent_id"] == fid],
         "tables": [x for x in payload["tables"] if x["folder_id"] == fid],
     })
+
+
+@bp.get("/folders/<int:fid>/items")
+def folder_items(fid):
+    """Every live item in this folder and its subfolders, with each item's path (read-only view)."""
+    from sqlalchemy.orm import selectinload
+
+    from ..models import InvTable, Item
+    from .. import quantity
+    f = inv.get_folder(fid)
+    include_archived = request.args.get("include_archived") in ("1", "true")
+    fmap = FolderMap()
+    folder_ids = [fid] + [d for d in fmap.descendants(fid) if not fmap.nodes[d].deleted]
+    tables = {t.id: t for t in db.session.query(InvTable).filter(
+        InvTable.folder_id.in_(folder_ids), InvTable.deleted_at.is_(None))}
+    active = {tid: t.active and fmap.effective_active(t.folder_id) for tid, t in tables.items()}
+    if not include_archived:
+        tables = {tid: t for tid, t in tables.items() if active[tid]}
+    items = (db.session.query(Item).options(selectinload(Item.photos), selectinload(Item.creator))
+             .filter(Item.table_id.in_(list(tables) or [0]), Item.deleted_at.is_(None))
+             .order_by(Item.table_id, Item.position).all())
+    out = []
+    for it in items:
+        t = tables[it.table_id]
+        labels = {c["key"]: c.get("label") or c["key"] for c in t.columns}
+        fields = " · ".join(f"{labels.get(k, k)}: {'yes' if v is True else v}"
+                            for k, v in (it.custom or {}).items() if v not in (None, "", False))
+        q = it.quantity
+        out.append({
+            "id": it.id, "table_id": t.id, "table_name": t.name,
+            # relative to the folder being viewed: "Box 2" or "Shelf / Box 2"
+            "path": " / ".join(fmap.path(t.folder_id)[len(fmap.path(f.id)):] + [t.name]),
+            "description": it.description or "", "quantity": q, "quantity_display": quantity.format(q),
+            "observation": it.observation or "", "fields": fields, "archived": not active[t.id],
+            "photos": [p.to_dict() for p in it.photos],
+            "created_at": it.to_dict()["created_at"], "created_by": it.creator.name if it.creator else None,
+        })
+    return jsonify({"folder": {**f.to_dict(), "path": fmap.path(f.id)}, "items": out,
+                    "tables": len(tables), "archived_hidden": not include_archived and any(not a for a in active.values())})
 
 
 # ---------------------------------------------------------------- tables

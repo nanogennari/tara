@@ -1,7 +1,7 @@
 // Table view: header (path, title, summary, last-updated), toolbar, bulk bar and the Tabulator grid.
 import { ageDays, api, confirmDialog, contextMenu, debounce, del, esc, fmtDateTime, get, icon, icons,
   patch, post, promptDialog, put, qtyFormat, relTime, tablePicker, toast, toastError } from "./util.js";
-import { gridDefault, saveTablePrefs, screenSize, setGridDefault, tablePrefs } from "./prefs.js";
+import { applyGridVars, gridDefault, saveTablePrefs, screenSize, setGridDefault, tablePrefs } from "./prefs.js";
 import { TYPE_LABELS, columnDialog } from "./columns.js";
 
 const SOON_DAYS = 60;
@@ -74,15 +74,7 @@ export class TableView {
     const d = gridDefault(), tp = this.tp;
     return { rowH: tp.rowH ?? d.rowH, font: tp.font ?? d.font, custom: tp.rowH != null || tp.font != null };
   }
-  applyView() {
-    const { rowH, font } = this.view();
-    const line = Math.round(font * 1.45), thumb = Math.max(20, rowH - 8), st = this.el.style;
-    st.setProperty("--grid-font", `${font}px`);
-    st.setProperty("--row-h", `${rowH}px`);
-    st.setProperty("--cell-pad", `${Math.max(3, Math.round((rowH - line) / 2))}px`);
-    st.setProperty("--thumb", `${thumb}px`);
-    st.setProperty("--photo-pad", `${Math.max(2, Math.round((rowH - thumb) / 2))}px`);
-  }
+  applyView() { applyGridVars(this.el, this.view()); }
   thumbsShown() { const h = this.view().rowH; return h <= 40 ? 3 : h <= 56 ? 2 : 1; }
   isHidden(c) {
     if (c.key === "description") return false;

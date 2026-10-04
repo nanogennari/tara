@@ -42,6 +42,12 @@ def item_link(item_id):
     return _shell({"type": "item", "id": item_id})
 
 
+@bp.get("/f/<int:folder_id>/all")
+@login_required
+def folder_items_link(folder_id):
+    return _shell({"type": "folderitems", "id": folder_id})
+
+
 @bp.get("/f/<int:folder_id>")
 @login_required
 def folder_link(folder_id):

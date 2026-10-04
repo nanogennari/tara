@@ -1,6 +1,7 @@
 // Folder overview, Trash and full search results views.
-import { ageDays, confirmDialog, del, esc, fmtDateTime, get, icon, icons, post, relTime, toast, toastError } from "./util.js";
+import { ageDays, confirmDialog, contextMenu, debounce, del, esc, fmtDateTime, get, icon, icons, post, relTime, toast, toastError } from "./util.js";
 import { bulk } from "./tree.js";
+import { applyGridVars, gridDefault } from "./prefs.js";
 
 // ------------------------------------------------------------ folder view
 export class FolderView {
@@ -48,6 +49,7 @@ export class FolderView {
             ${ed ? `<button class="btn btn-primary" data-a="new-table">${icon("plus")} New table</button>
             <button class="btn" data-a="new-folder">${icon("folder-plus")} Subfolder</button>
             <button class="btn" data-a="import">${icon("file-spreadsheet")} Import XLSX</button>` : ""}
+            <button class="btn" data-a="all">${icon("list")} See all items</button>
             <button class="btn" data-a="search">${icon("search")} Search here</button>
             <button class="btn" data-a="export">${icon("download")} Export</button>
             ${ed ? `<button class="btn" data-a="archive">${icon(folder.active ? "archive" : "archive-restore")} ${folder.active ? "Archive" : "Reactivate"}</button>` : ""}
@@ -97,10 +99,123 @@ export class FolderView {
         "new-folder": () => this.s.newFolder(this.id).then(() => this.load()),
         import: () => window.dispatchEvent(new CustomEvent("import:open", { detail: { folderId: this.id } })),
         search: () => window.dispatchEvent(new CustomEvent("palette:open", { detail: { folders: [this.id] } })),
+        all: () => this.s.openFolderItems(this.id),
         export: () => { location.href = `/api/export/xlsx?folder_id=${this.id}`; },
         archive: () => bulk(this.s, folder.active ? "archive" : "reactivate", { folders: [this.id], tables: [] }).then(() => this.load()),
       })[a]?.();
     };
+  }
+}
+
+// ------------------------------------------------------------ all items in a folder (read-only)
+export class FolderItemsView {
+  constructor(el, tab, store) {
+    this.el = el; this.tab = tab; this.s = store; this.id = tab.id;
+    this.includeArchived = false;
+    this.filterText = "";
+    this.grid = null;
+    this.onGridView = () => { applyGridVars(this.el, gridDefault()); this.grid?.redraw(true); };
+    window.addEventListener("grid:view", this.onGridView);
+  }
+
+  async load() {
+    if (!this.data) this.el.innerHTML = `<div class="empty-state"><span class="spinner"></span></div>`;
+    try { this.data = await get(`/api/folders/${this.id}/items${this.includeArchived ? "?include_archived=1" : ""}`); }
+    catch (e) {
+      this.el.innerHTML = `<div class="empty-state">${icon("folder-x")}<p>${esc(e.message)}</p></div>`;
+      return icons(this.el);
+    }
+    this.tab.title = `All in ${this.data.folder.name}`;
+    this.render();
+  }
+
+  onShow() { this.grid?.redraw(); }
+  close() { window.removeEventListener("grid:view", this.onGridView); this.grid?.destroy(); }
+
+  render() {
+    const d = this.data;
+    this.grid?.destroy();
+    applyGridVars(this.el, gridDefault());
+    const crumbs = d.folder.path.slice(0, -1).map((n, i) => {
+      const f = this.s.folderPath(d.folder.id)[i];
+      return `<a href="#" data-folder="${f?.id}">${esc(n)}</a>${icon("chevron-right")}`;
+    }).join("");
+    this.el.innerHTML = `
+      <header class="tv-head">
+        <nav class="crumbs">${icon("folder")}${crumbs}<a href="#" data-folder="${d.folder.id}">${esc(d.folder.name)}</a>${icon("chevron-right")}<span>All items</span></nav>
+        <div class="title-row"><h1>All items in ${esc(d.folder.name)}</h1>
+          <span class="badge">${d.items.length} items · ${d.tables} tables</span></div>
+        <p class="summary empty" style="cursor:default">Everything in this folder and its subfolders. Click a row to open it in its table.</p>
+      </header>
+      <div class="toolbar">
+        <input class="filter" type="search" placeholder="Filter items…" value="${esc(this.filterText)}" aria-label="Filter items">
+        <label class="check small"><input type="checkbox" data-arch ${this.includeArchived ? "checked" : ""}> Include archived tables</label>
+        <span class="grow"></span>
+        <a class="btn" href="/api/export/xlsx?folder_id=${d.folder.id}">${icon("download")}<span class="label-sm">Export</span></a>
+      </div>
+      <div class="grid-wrap"><div class="grid"></div></div>`;
+    icons(this.el);
+    this.el.querySelectorAll("[data-folder]").forEach((a) => a.addEventListener("click", (e) => {
+      e.preventDefault(); this.s.openFolder(Number(a.dataset.folder));
+    }));
+    this.el.querySelector("[data-arch]").addEventListener("change", (e) => { this.includeArchived = e.target.checked; this.load(); });
+    this.el.querySelector(".filter").addEventListener("input", debounce((e) => { this.filterText = e.target.value; this.applyFilter(); }, 150));
+
+    const mobile = matchMedia("(max-width: 600px)").matches;
+    const max = (desk, phone) => (mobile ? phone : desk);
+    this.grid = new Tabulator(this.el.querySelector(".grid"), {
+      data: d.items, index: "id", height: "100%", layout: "fitData", placeholder: "No items in this folder.",
+      columnDefaults: { vertAlign: "top", headerSortTristate: true },
+      initialSort: [{ column: "path", dir: "asc" }],
+      rowFormatter: (row) => { row.getElement().dataset.id = row.getData().id; row.getElement().classList.toggle("archived-row", row.getData().archived); },
+      columns: [
+        { title: "Path", field: "path", maxWidth: max(320, 180), formatter: (c) => `<a href="/t/${c.getRow().getData().table_id}" class="path-link">${esc(c.getValue())}</a>` },
+        { title: "Item", field: "description", maxWidth: max(420, 220), formatter: (c) => esc(c.getValue()) },
+        { title: "Qty", field: "quantity_display", sorter: (a, b, ra, rb) => (ra.getData().quantity?.value ?? -1) - (rb.getData().quantity?.value ?? -1),
+          formatter: (c) => (c.getRow().getData().quantity?.estimated ? `<span class="est">${esc(c.getValue())}</span>` : esc(c.getValue())), cssClass: "cell-qty" },
+        { title: "Obs", field: "observation", maxWidth: max(360, 200), formatter: (c) => esc(c.getValue()) },
+        { title: "Fields", field: "fields", maxWidth: max(320, 200), formatter: (c) => esc(c.getValue()) },
+        { title: "Photo", field: "photos", headerSort: false, cssClass: "cell-photos", formatter: (c) => {
+          const it = c.getRow().getData();
+          return `<div class="thumbs">${it.photos.slice(0, 2).map((p, i) => `<img src="${p.thumb}" alt="" loading="lazy" data-i="${i}">`).join("")}${it.photos.length > 2 ? `<span class="more-n">+${it.photos.length - 2}</span>` : ""}</div>`;
+        } },
+        { title: "Added", field: "created_at", formatter: (c) => {
+          const r = c.getRow().getData();
+          return `<span class="updated-cell">${esc(fmtDateTime(r.created_at))}${r.created_by ? " · " + esc(r.created_by) : ""}</span>`;
+        } },
+      ],
+    });
+    this.grid.on("tableBuilt", () => this.applyFilter());
+    this.grid.on("rowClick", (e, row) => {
+      const it = row.getData();
+      const img = e.target.closest(".thumbs img, .thumbs .more-n");
+      if (img) {
+        e.preventDefault();
+        return window.dispatchEvent(new CustomEvent("viewer:open", { detail: { photos: it.photos, index: Number(img.dataset.i || 2), title: it.description } }));
+      }
+      if (e.ctrlKey || e.metaKey || e.button === 1) return; // let path links open in a new tab
+      e.preventDefault();
+      this.s.openTable(it.table_id, { rowId: it.id, select: true });
+    });
+    this.el.querySelector(".grid").addEventListener("contextmenu", (e) => {
+      const rowEl = e.target.closest(".tabulator-row");
+      const row = rowEl && this.grid.getRow(Number(rowEl.dataset.id));
+      if (!row) return;
+      e.preventDefault();
+      const it = row.getData();
+      contextMenu(e.clientX, e.clientY, [
+        { label: "Open in its table", icon: "table-2", action: () => this.s.openTable(it.table_id, { rowId: it.id, select: true }) },
+        { label: "Copy link to this item", icon: "link", action: () => this.s.copyLink(`/i/${it.id}`, "Item link") },
+        it.photos.length && { label: "View photos", icon: "image", action: () => window.dispatchEvent(new CustomEvent("viewer:open", { detail: { photos: it.photos, index: 0, title: it.description } })) },
+      ]);
+    });
+  }
+
+  applyFilter() {
+    if (!this.grid) return;
+    const q = this.filterText.trim().toLowerCase();
+    if (!q) return this.grid.clearFilter();
+    this.grid.setFilter((r) => q.split(/\s+/).every((t) => [r.path, r.description, r.observation, r.fields, r.quantity_display].join(" ").toLowerCase().includes(t)));
   }
 }
 

@@ -2,7 +2,7 @@
 import { fmtDateTime, get, icons, post, promptDialog, qtyFormat, toastError, toast } from "./util.js";
 import { renderTree } from "./tree.js";
 import { TableView } from "./table-view.js";
-import { FolderView, TrashView, SearchView } from "./views.js";
+import { FolderItemsView, FolderView, TrashView, SearchView } from "./views.js";
 import { paletteComponent } from "./palette.js";
 import { aiWizardComponent } from "./ai-wizard.js";
 import { viewerComponent } from "./viewer.js";
@@ -20,6 +20,7 @@ const views = new Map(); // tab key -> view instance (kept alive while the tab i
 export function linkPath(tab) {
   if (tab.type === "table") return `/t/${tab.id}`;
   if (tab.type === "folder") return `/f/${tab.id}`;
+  if (tab.type === "folderitems") return `/f/${tab.id}/all`;
   return "/";
 }
 
@@ -126,6 +127,10 @@ function createStore(boot) {
       this.openTab({ key: `folder:${id}`, type: "folder", id, title: f?.name || "Folder" });
       this.reveal(id);
     },
+    openFolderItems(id) {
+      const f = this.folder(id);
+      this.openTab({ key: `folderitems:${id}`, type: "folderitems", id, title: `All in ${f?.name || "folder"}` }, { refresh: true });
+    },
     openTrash() { this.openTab({ key: "trash", type: "trash", title: "Trash" }); },
     openSearch(q, scope) { this.openTab({ key: "search", type: "search", title: `Search: ${q}`, q, scope }, { refresh: true }); },
     activate(key, opts = {}) {
@@ -149,6 +154,8 @@ function createStore(boot) {
         if (this.table(target.id)) return this.openTable(target.id);
       } else if (target.type === "folder") {
         if (this.folder(target.id)) return this.openFolder(target.id);
+      } else if (target.type === "folderitems") {
+        if (this.folder(target.id)) return this.openFolderItems(target.id);
       } else if (target.type === "item") {
         try {
           const it = await get(`/api/items/${target.id}`);
@@ -197,7 +204,7 @@ function createStore(boot) {
     pruneTabs() {
       // Drop tabs whose table/folder no longer exists (deleted elsewhere)
       for (const t of [...this.tabs]) {
-        if ((t.type === "table" && !this.table(t.id)) || (t.type === "folder" && !this.folder(t.id))) this.closeTab(t.key);
+        if ((t.type === "table" && !this.table(t.id)) || (["folder", "folderitems"].includes(t.type) && !this.folder(t.id))) this.closeTab(t.key);
       }
     },
     refreshTabTitles() {
@@ -215,7 +222,7 @@ function createStore(boot) {
       };
     },
     tabIcon(tab) {
-      return { table: "table-2", folder: "folder", trash: "trash-2", search: "search" }[tab.type];
+      return { table: "table-2", folder: "folder", folderitems: "list", trash: "trash-2", search: "search" }[tab.type];
     },
     showView(key, opts = {}) {
       const host = document.getElementById("views");
@@ -226,7 +233,7 @@ function createStore(boot) {
         const el = document.createElement("div");
         el.className = "view";
         host.appendChild(el);
-        const Cls = { table: TableView, folder: FolderView, trash: TrashView, search: SearchView }[tab.type];
+        const Cls = { table: TableView, folder: FolderView, folderitems: FolderItemsView, trash: TrashView, search: SearchView }[tab.type];
         v = new Cls(el, tab, this);
         views.set(key, v);
         v.load(opts);

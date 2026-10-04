@@ -40,6 +40,16 @@ export function saveTablePrefs(tid, patch, size = screenSize()) {
   }, 500);
 }
 
+/** Apply row height / text size to a grid container via CSS variables. */
+export function applyGridVars(el, { rowH, font }) {
+  const line = Math.round(font * 1.45), thumb = Math.max(20, rowH - 8), st = el.style;
+  st.setProperty("--grid-font", `${font}px`);
+  st.setProperty("--row-h", `${rowH}px`);
+  st.setProperty("--cell-pad", `${Math.max(3, Math.round((rowH - line) / 2))}px`);
+  st.setProperty("--thumb", `${thumb}px`);
+  st.setProperty("--photo-pad", `${Math.max(2, Math.round((rowH - thumb) / 2))}px`);
+}
+
 /** Make a row height / text size the default for this screen size (optionally for every table). */
 export async function setGridDefault(view, applyEverywhere = false, size = screenSize()) {
   const saved = await api("PUT", `/api/me/prefs/grid?size=${size}`, { ...view, apply_everywhere: applyEverywhere });
