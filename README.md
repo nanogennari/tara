@@ -6,7 +6,7 @@ Spreadsheet-style tables organised in folders, items catalogued from photos by a
 and search that understands meaning. Built for SigmaCamp Brasil's boxes of camp materials, but works
 for any physical inventory.
 
-![Tara: folders in the sidebar, a table of items with photos, expiry dates and estimated quantities](docs/screenshot.png)
+![Tara: folders in the sidebar and a box of office supplies with photos and estimated quantities](docs/screenshot.png)
 
 - **Tables in nested folders**: sidebar tree, spreadsheet-like tabs, inline editing, custom columns
   (text, number, date, checkbox, choice list, link). Quantities can be exact or estimated (`~75`, `3 rolls`, `1.2 kg`).

@@ -47,12 +47,18 @@ SHEETS = [
         ],
     },
     {
-        "sheet": "Box 03 Office Supplies", "name": "Box 03: Office Supplies", "summary": "Markers and tape",
+        "sheet": "Box 03 Office Supplies", "name": "Box 03: Office Supplies", "summary": "Markers, name tags, tape and paper",
         "header": ["Item", "Qty", "Obs", "Photo"],
         "rows": [
             ["Sharpie Fine Point permanent marker, black", "~22", "Approximate count, in ziplock"],
+            ["Sharpie Fine Point permanent marker, assorted colors", "~24", "Approximate count, in ziplock"],
+            ["Magnetic name tags, assorted colors", "~70", "Rough estimate, in clear box"],
             ["Scotch clear packing tape", "3 rolls", "1 with red dispenser"],
             ["Duck duct tape, silver, 48 mm x 55 m", "2 rolls", "1 sealed, 1 opened"],
+            ["Scissors, 21 cm, stainless steel", "6", ""],
+            ["Glue sticks, 40 g", "1 pack (12)", "Unopened"],
+            ["Avery mini business cards, 1\" x 3\"", "3 packs", "160 cards each"],
+            ["Origami paper, 15 cm, double-sided", "1 pack (500 sheets)", ""],
         ],
     },
     {
