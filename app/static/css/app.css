@@ -223,6 +223,11 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .tabulator-row .tabulator-cell.tabulator-editing { border: 2px solid var(--primary); padding: 0; background: var(--surface); }
 .tabulator-row .tabulator-cell.tabulator-editing input, .tabulator-row .tabulator-cell.tabulator-editing textarea, .tabulator-row .tabulator-cell.tabulator-editing select { border: 0; border-radius: 0; box-shadow: none; padding: 7px 8px; min-height: 34px; height: 100%; background: var(--surface); color: var(--text); }
 .tabulator-row .tabulator-cell.tabulator-row-handle { cursor: grab; color: var(--muted); }
+/* Frozen columns (checkbox, drag handle): same thin border as the rest of the grid */
+.tabulator .tabulator-header .tabulator-frozen.tabulator-frozen-left,
+.tabulator-row .tabulator-cell.tabulator-frozen.tabulator-frozen-left { border-right: 1px solid var(--border); }
+.tabulator-row .tabulator-cell.tabulator-frozen { background: inherit; }
+.tabulator-row .tabulator-cell.tabulator-row-header { background: inherit; border-bottom: 0; border-right: 1px solid var(--border); }
 .tabulator-row.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0%, 40% { background: rgba(var(--primary-rgb), .28); } 100% { background: transparent; } }
 .tabulator .tabulator-footer { background: var(--surface-2); border-top: 1px solid var(--border); color: var(--muted); }
