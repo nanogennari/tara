@@ -40,7 +40,12 @@ export function guidedComponent() {
 
     init() {
       window.addEventListener("guided:open", (e) => this.start(e.detail || {}));
-      this.$watch("step", () => this.$nextTick(() => icons(this.$root)));
+      // Each step starts at the top (e.g. the "Applying your change…" spinner after a long result list)
+      this.$watch("step", () => this.$nextTick(() => {
+        icons(this.$root);
+        const body = this.$root.querySelector(".guided-body");
+        if (body) body.scrollTop = 0;
+      }));
       this.$watch("folderId", () => this.$nextTick(() => icons(this.$root)));
       this.$watch("rows", () => this.$nextTick(() => icons(this.$root)));
     },
