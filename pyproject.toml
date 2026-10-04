@@ -1,0 +1,36 @@
+[project]
+name = "tara"
+version = "0.1.0"
+description = "Tara — the self-hosted, simple, AI-assisted inventory tool"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = [
+    "anthropic>=1.0",
+    "argon2-cffi>=25.1",
+    "cryptography>=45",
+    "fastembed>=0.8",
+    "flask>=3.1,<3.2",
+    "flask-login>=0.6.3",
+    "flask-migrate>=4.1",
+    "flask-sqlalchemy>=3.1",
+    "flask-wtf>=1.2",
+    "google-genai>=1.0",
+    "gunicorn>=23",
+    "numpy>=2",
+    "openai>=2.0",
+    "openpyxl>=3.1,<3.2",
+    "pillow>=11",
+    "requests>=2.32",
+    "sqlalchemy>=2.0,<2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

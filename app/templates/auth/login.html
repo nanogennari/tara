@@ -1,0 +1,14 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Sign in · {{ brand['app.name'] }}{% endblock %}
+{% block form %}
+<form method="post" class="form-stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Username or email<input name="username" autocomplete="username" required autofocus></label>
+  <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+  <label class="check"><input type="checkbox" name="remember" checked> Keep me signed in</label>
+  <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+  {% if allow_registration %}
+  <p class="muted center">No account? <a href="{{ url_for('auth.register') }}">Create one</a></p>
+  {% endif %}
+</form>
+{% endblock %}

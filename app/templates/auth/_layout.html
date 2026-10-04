@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block body_class %}auth-page{% endblock %}
+{% block body %}
+<main class="auth-card">
+  <div class="auth-brand">
+    {% if brand['app.logo'] %}
+      <img src="{{ url_for('main.branding', name=brand['app.logo']) }}?v={{ brand_version }}" alt="" class="auth-logo">
+    {% else %}
+      <img src="{{ url_for('static', filename='favicon.svg') }}" alt="" class="auth-logo">
+    {% endif %}
+    <h1>{{ brand['app.name'] }}</h1>
+    {% if brand['app.tagline'] %}<p class="muted">{{ brand['app.tagline'] }}</p>{% endif %}
+  </div>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="alert {{ 'alert-error' if cat == 'error' else 'alert-ok' }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+  {% block form %}{% endblock %}
+</main>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Welcome · {{ brand['app.name'] }}{% endblock %}
+{% block form %}
+<p class="muted">Welcome! Create the first administrator account to get started.</p>
+<form method="post" class="form-stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Organization / app name<input name="app_name" value="{{ brand['app.name'] }}"></label>
+  <label>Username<input name="username" autocomplete="username" required autofocus></label>
+  <label>Display name<input name="display_name" autocomplete="name"></label>
+  <label>Email<input type="email" name="email" autocomplete="email"></label>
+  <label>Password<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+  <label>Repeat password<input type="password" name="password2" autocomplete="new-password" minlength="8" required></label>
+  <input type="hidden" name="timezone" id="tz">
+  <script>document.getElementById("tz").value = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";</script>
+  <button class="btn btn-primary btn-block" type="submit">Create admin account</button>
+</form>
+{% endblock %}

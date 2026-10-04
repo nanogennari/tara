@@ -1,0 +1,9 @@
+.venv
+.direnv
+.devdata
+.git
+e2e/screens
+**/__pycache__
+.pytest_cache
+*.xlsx
+tests

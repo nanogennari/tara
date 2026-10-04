@@ -1,0 +1,556 @@
+{% extends "base.html" %}
+{% block vendor_css %}<link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabulator.min.css') }}">{% endblock %}
+{% block body %}
+<script type="application/json" id="boot">{{ {"user": user_json, "staleDays": stale_days, "timezone": timezone} | tojson }}</script>
+
+<div class="shell" x-data="shell" @paste.window="$dispatch('wizard-paste', $event)">
+  <!-- ======================================================= top bar -->
+  <header class="topbar">
+    <button class="btn btn-ghost btn-icon menu-btn" @click="s.sidebarOpen = !s.sidebarOpen" aria-label="Toggle folders"><i data-lucide="menu"></i></button>
+    <a class="brand" href="/">
+      {% if brand['app.logo'] %}
+        <img src="{{ url_for('main.branding', name=brand['app.logo']) }}?v={{ brand_version }}" alt="">
+      {% else %}
+        <img src="{{ url_for('static', filename='favicon.svg') }}" alt="">
+      {% endif %}
+      <span class="name truncate">{{ brand['app.name'] }}</span>
+    </a>
+    <div class="searchbox">
+      <button class="btn" @click="$dispatch('palette:open')" aria-label="Search everything">
+        <i data-lucide="search"></i><span class="truncate">Search items, tables, folders…</span><kbd>Ctrl K</kbd>
+      </button>
+    </div>
+    <template x-if="s.user.can_edit"><button class="btn" @click="startGuided()" title="Guided add: catalogue boxes step by step"><i data-lucide="scan-line"></i><span class="hide-sm">Guided add</span></button></template>
+    <button class="btn btn-ai" @click="$dispatch('chat:toggle')" title="Ask AI about the inventory (Ctrl+J)"><i data-lucide="message-circle-question"></i><span class="hide-sm">Ask AI</span></button>
+    <div class="row" style="position:relative" @click.outside="userMenu = false">
+      <button class="avatar" @click="userMenu = !userMenu" :title="s.user.name" aria-label="Account menu" x-text="initials()"></button>
+      <div class="ctx" x-show="userMenu" x-cloak style="right:0;top:40px;position:absolute" @click="userMenu = false">
+        <div class="small muted" style="padding:6px 10px"><strong x-text="s.user.name"></strong> · <span x-text="s.user.role"></span></div>
+        <hr>
+        <button @click="location.href='{{ url_for('auth.profile') }}'"><i data-lucide="user"></i>Profile & password</button>
+        <button x-show="s.user.is_admin" @click="location.href='{{ url_for('admin.settings_page') }}'"><i data-lucide="settings"></i>Settings</button>
+        <hr>
+        <button @click="setTheme('light')"><i data-lucide="sun"></i>Light</button>
+        <button @click="setTheme('dark')"><i data-lucide="moon"></i>Dark</button>
+        <button @click="setTheme('auto')"><i data-lucide="monitor"></i>System theme</button>
+        <hr>
+        <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><i data-lucide="log-out"></i>Sign out</button></form>
+      </div>
+    </div>
+  </header>
+
+  <div class="body">
+    <!-- ===================================================== sidebar -->
+    <aside class="sidebar" :class="s.sidebarOpen && 'open'" aria-label="Folders and tables">
+      <div class="sidebar-head">
+        <h2>Inventory</h2>
+        <template x-if="s.user.can_edit">
+          <div class="row" style="gap:2px">
+            <button class="btn btn-ghost btn-icon btn-sm" title="New folder" @click="s.newFolder(null)"><i data-lucide="folder-plus"></i></button>
+            <button class="btn btn-ghost btn-icon btn-sm" title="New table" @click="s.newTable(null)"><i data-lucide="file-plus-2"></i></button>
+            <button class="btn btn-ghost btn-icon btn-sm" title="Import XLSX" @click="$dispatch('import:open', {folderId: null})"><i data-lucide="file-spreadsheet"></i></button>
+          </div>
+        </template>
+        <button class="btn btn-ghost btn-icon btn-sm" x-show="s.showArchived" title="Archived tables are shown — click to hide them" @click="s.setShowArchived(false)"><i data-lucide="eye"></i></button>
+        <button class="btn btn-ghost btn-icon btn-sm" x-show="!s.showArchived" x-cloak title="Archived tables are hidden — click to show them" @click="s.setShowArchived(true)"><i data-lucide="eye-off"></i></button>
+      </div>
+      <div class="tree" id="tree" role="tree"></div>
+      <div class="bulkbar" x-show="s.selCount > 0" x-cloak>
+        <span class="grow" x-text="s.selCount + ' selected'"></span>
+        <template x-if="s.user.can_edit">
+          <div class="row wrap" style="gap:4px">
+            <button class="btn" @click="import('/static/js/tree.js').then(m => m.bulk(s, 'move'))"><i data-lucide="folder-input"></i>Move</button>
+            <button class="btn" @click="import('/static/js/tree.js').then(m => m.bulk(s, 'archive'))"><i data-lucide="archive"></i>Archive</button>
+            <button class="btn" @click="import('/static/js/tree.js').then(m => m.bulk(s, 'reactivate'))"><i data-lucide="archive-restore"></i></button>
+            <button class="btn btn-danger" @click="import('/static/js/tree.js').then(m => m.bulk(s, 'delete'))"><i data-lucide="trash-2"></i>Delete</button>
+          </div>
+        </template>
+        <button class="btn btn-ghost btn-icon" @click="s.clearSelection()" aria-label="Clear selection"><i data-lucide="x"></i></button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="btn btn-ghost btn-sm" @click="s.openTrash()"><i data-lucide="trash-2"></i>Trash</button>
+        <span class="small muted" style="align-self:center;padding:0 6px" title="Tip: Ctrl/⌘-click or Shift-click to select several">⌘/Ctrl-click to multi-select</span>
+      </div>
+      <div class="resizer" aria-hidden="true"></div>
+    </aside>
+    <div class="scrim" :class="s.sidebarOpen && 'open'" @click="s.sidebarOpen = false"></div>
+
+    <!-- ===================================================== main -->
+    <main class="main">
+      <div id="views" style="min-height:0;display:grid">
+        <div class="view" x-show="!s.tabs.length" x-cloak>
+          <div class="empty-state" style="margin:auto">
+            <i data-lucide="boxes"></i>
+            <h2>Open a table from the sidebar</h2>
+            <p class="muted">Or search everything with <kbd>Ctrl</kbd> <kbd>K</kbd>.</p>
+            <template x-if="s.user.can_edit">
+              <div class="row wrap" style="justify-content:center">
+                <button class="btn btn-primary" @click="s.newTable(null)"><i data-lucide="plus"></i>New table</button>
+                <button class="btn" @click="$dispatch('import:open', {folderId: null})"><i data-lucide="file-spreadsheet"></i>Import a spreadsheet</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Open tables">
+        <div class="tab-list" style="display:flex">
+          <template x-for="tab in s.tabs" :key="tab.key">
+            <div class="tab" :class="{active: tab.key === s.activeKey, archived: s.tabInfo(tab).archived}" :data-key="tab.key"
+                 :title="s.tabInfo(tab).title" @click="s.activate(tab.key)" @auxclick.prevent="$event.button === 1 && s.closeTab(tab.key)" role="tab" :aria-selected="tab.key === s.activeKey">
+              <i :data-lucide="s.tabIcon(tab)"></i>
+              <span class="label" x-text="tab.title"></span>
+              <button class="btn btn-ghost btn-icon btn-sm close" @click.stop="s.closeTab(tab.key)" aria-label="Close tab"><i data-lucide="x"></i></button>
+            </div>
+          </template>
+        </div>
+        <template x-if="s.user.can_edit"><button class="add" title="New table in the current folder" @click="newTableHere()"><i data-lucide="plus"></i></button></template>
+      </nav>
+    </main>
+  </div>
+
+  <!-- ======================================================= Guided add mode -->
+  <div x-data="guided" x-show="open" x-cloak class="guided" role="dialog" aria-modal="true" aria-label="Guided add"
+       @keydown.escape.window="open && step !== 'working' && exit()">
+    <header class="guided-head">
+      <i data-lucide="scan-line"></i>
+      <div class="grow" style="min-width:0">
+        <strong>Guided add</strong>
+        <div class="small muted truncate" x-show="table && step !== 'where'" x-text="'Adding to ' + tablePath"></div>
+      </div>
+      <span class="badge badge-ok" x-show="added.length" x-text="added.length + ' added'"></span>
+      <button class="btn" @click="exit()"><i data-lucide="log-out"></i><span class="hide-sm">Exit</span></button>
+    </header>
+
+    <div class="guided-body">
+      <div class="alert alert-error" x-show="error" x-text="error"></div>
+
+      <!-- where: browse folders, pick/create a table -->
+      <section x-show="step === 'where'" class="stack">
+        <h2>Where are you adding items?</h2>
+        <nav class="crumbs" style="font-size:14px">
+          <a href="#" @click.prevent="enter(null)"><i data-lucide="home"></i> Top</a>
+          <template x-for="f in crumbs" :key="f.id"><span class="row" style="gap:4px"><i data-lucide="chevron-right"></i><a href="#" @click.prevent="enter(f.id)" x-text="f.name"></a></span></template>
+        </nav>
+        <div class="guided-grid">
+          <button class="g-card back" x-show="folderId !== null" @click="up()"><i data-lucide="corner-left-up"></i><span>Up</span></button>
+          <template x-for="f in subfolders" :key="'f' + f.id">
+            <button class="g-card" @click="enter(f.id)"><i data-lucide="folder"></i><span x-text="f.name"></span></button>
+          </template>
+          <template x-for="t in tablesHere" :key="'t' + t.id">
+            <button class="g-card table" @click="pickTable(t.id)"><i data-lucide="package"></i><span x-text="t.name"></span><small x-text="t.item_count + ' items'"></small></button>
+          </template>
+        </div>
+        <div class="row wrap">
+          <button class="btn btn-primary" @click="newTable()"><i data-lucide="package-plus"></i>New box / table here</button>
+          <button class="btn" @click="newFolder()"><i data-lucide="folder-plus"></i>New folder here</button>
+        </div>
+      </section>
+
+      <!-- capture -->
+      <section x-show="step === 'capture'" class="stack">
+        <div class="g-target">
+          <i data-lucide="package"></i>
+          <div class="grow" style="min-width:0"><div class="small muted truncate" x-text="table?.path.join(' / ') || 'Top level'"></div><strong class="truncate" x-text="table?.name"></strong></div>
+          <button class="btn btn-sm" @click="changeTable()"><i data-lucide="arrow-left-right"></i>Change</button>
+        </div>
+        <div class="g-capture">
+          <label class="g-big btn-ai"><i data-lucide="camera"></i><span>Take photo</span>
+            <input type="file" accept="image/*" capture="environment" class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
+          <label class="g-big"><i data-lucide="images"></i><span>Choose photos</span>
+            <input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
+        </div>
+        <div class="previews" x-show="files.length">
+          <template x-for="(f, i) in files" :key="f.url">
+            <div class="preview"><img :src="f.url" alt=""><span class="idx" x-text="i + 1"></span>
+              <button class="rm" @click="removeFile(i)" aria-label="Remove photo"><i data-lucide="x"></i></button></div>
+          </template>
+        </div>
+        <textarea x-model="notes" rows="2" placeholder="Optional note for the AI (e.g. “these are the red-bag medicines”)"></textarea>
+        <div class="row wrap">
+          <button class="btn btn-ai btn-lg grow" :disabled="!files.length" @click="analyze()"><i data-lucide="sparkles"></i><span x-text="files.length ? `Identify items in ${files.length} photo${files.length > 1 ? 's' : ''}` : 'Add photos to identify items'"></span></button>
+          <button class="btn btn-lg" @click="startManual()"><i data-lucide="keyboard"></i>Type it in</button>
+        </div>
+        <div x-show="added.length" class="stack" style="gap:6px">
+          <span class="small muted">Added this session</span>
+          <template x-for="a in added.slice(0, 6)" :key="a.id">
+            <div class="g-added"><template x-if="a.thumb"><img :src="a.thumb" alt=""></template>
+              <span class="grow truncate" x-text="a.description"></span><span class="small muted" x-text="a.qty"></span>
+              <span class="small muted hide-sm truncate" style="max-width:140px" x-text="a.table"></span></div>
+          </template>
+        </div>
+      </section>
+
+      <!-- manual entry -->
+      <section x-show="step === 'manual'" class="stack">
+        <h2>Type an item into <span x-text="table?.name"></span></h2>
+        <template x-if="manual">
+          <form class="form-stack" @submit.prevent="saveManual(true)">
+            <label>Item<input data-manual-desc x-model="manual.description" required placeholder="e.g. Scotch clear packing tape"></label>
+            <label>Quantity <span class="hint">~ for estimates: 12, ~75, 3 rolls, 1.2 kg</span><input x-model="manual.qty" placeholder="1"></label>
+            <label>Observation<textarea x-model="manual.observation" rows="2"></textarea></label>
+            <template x-for="c in customCols" :key="c.key">
+              <label><span x-text="c.label"></span>
+                <template x-if="c.type === 'select'"><select x-model="manual.custom[c.key]"><option value=""></option><template x-for="o in c.options"><option :value="o" x-text="o"></option></template></select></template>
+                <template x-if="c.type === 'checkbox'"><input type="checkbox" x-model="manual.custom[c.key]"></template>
+                <template x-if="!['select','checkbox'].includes(c.type)"><input x-model="manual.custom[c.key]" :type="c.type === 'number' ? 'number' : 'text'" :placeholder="c.type === 'date' ? 'YYYY-MM-DD' : ''"></template>
+              </label>
+            </template>
+            <div class="row wrap">
+              <label class="btn"><i data-lucide="camera"></i>Photo<input type="file" accept="image/*" capture="environment" class="sr-only" @change="addManualFiles($event.target.files); $event.target.value=''"></label>
+              <template x-for="f in manual.files"><img :src="f.url" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:6px"></template>
+            </div>
+            <div class="row wrap">
+              <button class="btn btn-primary btn-lg grow" type="submit"><i data-lucide="check"></i>Add & type another</button>
+              <button class="btn btn-lg" type="button" @click="saveManual(false)">Add & take photos</button>
+              <button class="btn btn-ghost btn-lg" type="button" @click="step = 'capture'">Back</button>
+            </div>
+          </form>
+        </template>
+      </section>
+
+      <!-- working -->
+      <section x-show="step === 'working'" class="working">
+        <span class="spinner"></span><strong x-text="workingLabel"></strong>
+        <span class="muted small" x-text="elapsed + 's'"></span>
+        <button class="btn btn-sm" @click="cancel()" x-show="workingLabel.startsWith('Looking')">Cancel</button>
+      </section>
+
+      <!-- confirm -->
+      <section x-show="step === 'confirm'" class="stack">
+        <div class="ai-notes" x-show="proposal?.notes"><i data-lucide="message-square-warning"></i><span x-text="proposal?.notes"></span></div>
+        <h2 x-text="`Found ${rows.length} item${rows.length === 1 ? '' : 's'} — confirm to add`"></h2>
+        <template x-for="(r, i) in rows" :key="i + ':' + r.description">
+          <div class="g-item" :class="!r.include && 'off'">
+            <input type="checkbox" x-model="r.include" aria-label="Include">
+            <div class="g-item-photos"><template x-for="pi in r.photo_indexes.slice(0, 2)"><img :src="photoFor(pi)?.thumb" alt=""></template></div>
+            <div class="grow stack" style="gap:6px;min-width:0">
+              <input x-model="r.description" aria-label="Description">
+              <div class="row" style="gap:6px">
+                <input x-model="r.qtyText" style="max-width:130px" aria-label="Quantity">
+                <input x-model="r.observation" placeholder="Observation" aria-label="Observation">
+              </div>
+              <template x-for="c in customCols" :key="c.key">
+                <div class="row small" style="gap:6px"><span class="muted" style="width:90px" x-text="c.label"></span><input x-model="r.custom[c.key]" style="min-height:28px"></div>
+              </template>
+              <template x-for="d in r.possible_duplicates"><div class="dupe"><i data-lucide="copy"></i><span x-text="(d.same_table ? 'Already here: ' : 'Maybe already in ' + d.table_name + ': ') + d.title"></span></div></template>
+            </div>
+          </div>
+        </template>
+        <div class="refine-bar">
+          <textarea x-model="instruction" placeholder="Ask the AI to fix something — “it's 2 rolls, not 3”, “split by colour”…" @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); refine() }"></textarea>
+          <button class="btn btn-ai" @click="refine()" :disabled="!instruction.trim()"><i data-lucide="sparkles"></i></button>
+        </div>
+        <div class="row wrap">
+          <button class="btn btn-primary btn-lg grow" @click="confirm()" :disabled="!selectedCount"><i data-lucide="check"></i><span x-text="`Add ${selectedCount} & continue`"></span></button>
+          <button class="btn btn-lg" @click="retake()"><i data-lucide="rotate-ccw"></i>Retake</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ======================================================= Ask AI panel -->
+  <aside x-data="chat" class="chat-panel" :class="open && 'open'" aria-label="Ask AI" x-cloak>
+    <div class="chat-head">
+      <i data-lucide="sparkles"></i><strong class="grow">Ask AI</strong>
+      <button class="btn btn-ghost btn-icon btn-sm" @click="clear()" title="New conversation" :disabled="busy"><i data-lucide="eraser"></i></button>
+      <button class="btn btn-ghost btn-icon btn-sm" @click="open = false" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="chat-body" x-ref="body" @click="onClick($event)">
+      <template x-if="!messages.length">
+        <div class="chat-empty">
+          <p class="muted">Ask anything about the inventory. I can see what's open and selected, search everything, and open tables for you.</p>
+          <template x-for="q in suggestions()"><button class="chip" @click="send(q)" x-text="q"></button></template>
+        </div>
+      </template>
+      <template x-for="(m, i) in messages" :key="i">
+        <div class="msg" :class="[m.role, m.error && 'error']">
+          <template x-if="m.steps?.length"><div class="steps"><template x-for="st in m.steps"><span class="step" x-text="st.label"></span></template></div></template>
+          <div class="bubble" x-html="m.role === 'assistant' ? md(m.content) : md(m.content)"></div>
+        </div>
+      </template>
+      <div class="msg assistant" x-show="busy"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>
+    </div>
+    <div class="chat-foot">
+      <label class="check small chat-ctx" :title="shareContext ? 'The assistant sees: ' + contextLabel : 'Screen context is not shared'">
+        <input type="checkbox" x-model="shareContext"><i data-lucide="eye"></i>
+        <span class="truncate" x-text="shareContext ? 'Sees: ' + contextLabel : 'Not sharing what is on screen'"></span>
+      </label>
+      <div class="chat-input">
+        <textarea x-ref="input" x-model="input" rows="1" placeholder="Ask about items, boxes, quantities…" @keydown="onKey($event)" :disabled="busy"></textarea>
+        <button class="btn btn-primary btn-icon" x-show="!busy" @click="send()" :disabled="!input.trim()" aria-label="Send"><i data-lucide="send-horizontal"></i></button>
+        <button class="btn btn-icon" x-show="busy" @click="stop()" aria-label="Stop"><i data-lucide="square"></i></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======================================================= search palette -->
+  <div x-data="palette" x-show="open" x-cloak class="modal-back palette-back" @mousedown.self="close()" @keydown.escape.window="open && close()">
+    <div class="modal palette" role="dialog" aria-modal="true" aria-label="Search">
+      <div class="palette-input">
+        <i data-lucide="search"></i>
+        <input x-ref="input" x-model="q" @input="run()" placeholder="Search by name, description, notes… (typos and other languages are fine)"
+               @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.enter.prevent="$event.shiftKey ? seeAll() : pick()" aria-label="Search">
+        <span class="spinner" x-show="loading"></span>
+        <kbd>Esc</kbd>
+      </div>
+      <div class="palette-scope">
+        <span class="muted">In:</span>
+        <button class="chip" :class="scoped && 'on'" @click="scopeOpen = !scopeOpen"><i data-lucide="folder-tree"></i><span x-text="scopeLabel"></span><i data-lucide="chevron-down"></i></button>
+        <button class="chip" x-show="scoped" @click="clearScope()"><i data-lucide="globe"></i>Everywhere</button>
+        <button class="chip" x-show="canScopeToCurrent && !scoped" @click="scopeToCurrent()"><i data-lucide="locate"></i>Current tab</button>
+        <span class="grow"></span>
+        <label class="check small"><input type="checkbox" x-model="includeArchived" @change="search()"> Include archived</label>
+      </div>
+      <div class="scope-tree" x-show="scopeOpen" x-cloak>
+        <p class="small muted" style="margin:2px 4px 6px">Tick folders to search in (subfolders included). Untick a subfolder to exclude it.</p>
+        <template x-for="row in scopeRows" :key="row.f.id">
+          <div class="scope-node" :style="`--depth:${row.depth}`" :class="folderState(row.f.id)" @click="toggleFolder(row.f.id)">
+            <input type="checkbox" :checked="['on','inherited'].includes(folderState(row.f.id))" :indeterminate="folderState(row.f.id) === 'inherited'" tabindex="-1">
+            <span class="n" x-text="row.f.name"></span>
+            <span class="badge" x-show="!row.f.effective_active">archived</span>
+          </div>
+        </template>
+        <p class="small muted" x-show="!scopeRows.length">No folders yet.</p>
+      </div>
+      <div class="palette-results">
+        <template x-for="(r, i) in results" :key="r.type + r.id">
+          <div>
+            <div class="group-label" x-show="groupStart(i)" x-text="groupLabel(r.type)"></div>
+            <div class="result" :class="{on: i === cursor, archived: !r.active}" @mouseenter="cursor = i" @click="pick(r)">
+              <template x-if="r.thumb"><img class="thumb" :src="r.thumb" alt=""></template>
+              <template x-if="!r.thumb"><span class="thumb"><i :data-lucide="r.type === 'item' ? 'box' : r.type === 'table' ? 'table-2' : 'folder'"></i></span></template>
+              <div class="grow" style="min-width:0">
+                <div class="t truncate"><span x-text="r.title"></span> <span class="muted" style="font-weight:400" x-show="r.quantity" x-text="'· ' + r.quantity"></span></div>
+                <div class="p truncate">
+                  <span x-text="(r.path || []).join(' / ') || 'Top level'"></span>
+                  <span x-show="r.table_updated_at" x-text="' · updated ' + rel(r.table_updated_at)"></span>
+                </div>
+              </div>
+              <div class="why">
+                <span class="badge badge-warn" x-show="!r.active">archived</span>
+                <span class="badge" x-show="r.match.includes('semantic') && !r.match.includes('lexical')" title="Matched by meaning">≈ meaning</span>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div class="empty-state" style="padding:30px" x-show="q.trim() && !loading && !results.length">No matches. Try different words — search understands meaning, e.g. “painkiller”.</div>
+        <div class="muted small" style="padding:14px" x-show="!q.trim()">
+          Tips: search finds partial words and typos (“zometol”), and similar meaning across languages (“curativo” → Band-Aid).
+        </div>
+      </div>
+      <div class="modal-foot" style="justify-content:space-between">
+        <span class="small muted"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>Enter</kbd> open · <kbd>Shift</kbd>+<kbd>Enter</kbd> all results</span>
+        <span class="badge badge-warn" x-show="semanticError" :title="semanticError">fuzzy text only</span>
+        <button class="btn btn-sm" @click="seeAll()" :disabled="!q.trim()">See all results</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================= AI wizard -->
+  <div x-data="aiWizard" x-show="open" x-cloak class="modal-back" @keydown.escape.window="open && close()" @wizard-paste.window="onPaste($event.detail)">
+    <div class="modal" :class="step === 'review' ? 'wide' : 'mid'" role="dialog" aria-modal="true" aria-label="Add items with AI">
+      <div class="modal-head">
+        <i data-lucide="sparkles"></i>
+        <h2>Add with AI <span class="muted" style="font-weight:400" x-show="table" x-text="'· ' + (table?.name || '')"></span></h2>
+        <span class="badge" x-show="proposal?.model" x-text="proposal?.model"></span>
+        <button class="btn btn-ghost btn-icon" @click="close()" aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+
+      <!-- step: upload -->
+      <div class="modal-body" x-show="step === 'upload'">
+        <div class="alert alert-error" x-show="error" x-text="error"></div>
+        <div class="dropzone" :class="dragging && 'hover'" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop($event)">
+          <i data-lucide="images"></i>
+          <div><strong>Drop photos of the box contents</strong><br><span class="small">or paste from clipboard · up to 12 photos</span></div>
+          <div class="row wrap" style="justify-content:center">
+            <label class="btn btn-primary"><i data-lucide="camera"></i>Take photo<input type="file" accept="image/*" capture="environment" class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
+            <label class="btn"><i data-lucide="upload"></i>Choose files<input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
+          </div>
+        </div>
+        <div class="previews" x-show="files.length">
+          <template x-for="(f, i) in files" :key="f.url">
+            <div class="preview">
+              <img :src="f.url" alt="" @click="preview(i)">
+              <span class="idx" x-text="i + 1"></span>
+              <button class="rm" @click="removeFile(i)" aria-label="Remove photo"><i data-lucide="x"></i></button>
+            </div>
+          </template>
+        </div>
+        <label>Notes for the AI <span class="hint">(optional) — what's in the box, what to ignore, how to name things</span>
+          <textarea x-model="notes" rows="2" placeholder="e.g. Medicine bag from the red box. Count tablets from the labels. Ignore the box itself."></textarea>
+        </label>
+        <label class="check"><input type="checkbox" x-model="skipExisting"> Skip items already in this table</label>
+      </div>
+
+      <!-- step: working -->
+      <div class="modal-body" x-show="step === 'working'">
+        <div class="working">
+          <span class="spinner"></span>
+          <strong x-text="workingLabel"></strong>
+          <span class="muted small" x-text="elapsed + 's' + (elapsed > 20 ? ' — large photos or local models can take a minute or two' : '')"></span>
+          <button class="btn btn-sm" @click="cancelWork()" x-show="workingLabel !== 'Adding items…'">Cancel</button>
+        </div>
+      </div>
+
+      <!-- step: review -->
+      <div class="modal-body" x-show="step === 'review'">
+        <div class="alert alert-error" x-show="error" x-text="error"></div>
+        <div class="ai-notes" x-show="proposal?.notes"><i data-lucide="message-square-warning"></i><span x-text="proposal?.notes"></span></div>
+        <div class="row wrap">
+          <strong x-text="rows.length + ' proposed items'"></strong>
+          <span class="muted small">Untick to skip · edit any field · or ask the AI to change something</span>
+          <span class="grow"></span>
+          <button class="btn btn-sm btn-ghost" @click="toggleAll(true)">Select all</button>
+          <button class="btn btn-sm btn-ghost" @click="toggleAll(false)">None</button>
+          <button class="btn btn-sm" @click="undo()" :disabled="!versions.length" title="Undo last AI change"><i data-lucide="undo-2"></i>Undo</button>
+        </div>
+        <div class="history" x-show="history.length">
+          <span class="muted">Applied:</span>
+          <template x-for="h in history"><span class="badge badge-primary" x-text="h"></span></template>
+        </div>
+        <div style="overflow:auto">
+          <table class="review">
+            <thead><tr>
+              <th style="width:28px"></th><th>Item</th><th style="width:120px">Qty</th><th>Obs</th>
+              <template x-for="c in customCols" :key="c.key"><th x-text="c.label"></th></template>
+              <th style="width:120px">Photos</th><th style="width:70px"></th>
+            </tr></thead>
+            <tbody>
+              <template x-for="(r, i) in rows" :key="i + ':' + r.description">
+                <tr :class="{off: !r.include, changed: r.changed}">
+                  <td><input type="checkbox" x-model="r.include" :aria-label="'Include ' + r.description"></td>
+                  <td>
+                    <textarea x-model="r.description" rows="1" aria-label="Description"></textarea>
+                    <template x-for="d in r.possible_duplicates">
+                      <div class="dupe"><i data-lucide="copy"></i><span x-text="(d.same_table ? 'Already in this table: ' : 'Possibly already in ' + d.table_name + ': ') + d.title"></span></div>
+                    </template>
+                    <div class="row-refine" x-show="rowRefine.index === i">
+                      <input :data-refine="i" x-model="rowRefine.text" placeholder="e.g. split by colour · these are packs of 500 · read the expiry date"
+                             @keydown.enter.prevent="refine(i)" @keydown.escape.stop="rowRefine.index = null">
+                      <button class="btn btn-sm btn-ai" @click="refine(i)"><i data-lucide="sparkles"></i></button>
+                    </div>
+                  </td>
+                  <td>
+                    <input x-model="r.qtyText" placeholder="~75, 3 rolls" aria-label="Quantity">
+                    <div class="small" :class="'conf-' + r.confidence" :title="confLabel(r.confidence)" x-text="'● ' + r.confidence"></div>
+                  </td>
+                  <td><textarea x-model="r.observation" rows="1" aria-label="Observation"></textarea></td>
+                  <template x-for="c in customCols" :key="c.key">
+                    <td>
+                      <template x-if="c.type === 'select'">
+                        <select x-model="r.custom[c.key]"><option value=""></option><template x-for="o in c.options"><option :value="o" x-text="o"></option></template></select>
+                      </template>
+                      <template x-if="c.type === 'checkbox'"><input type="checkbox" x-model="r.custom[c.key]"></template>
+                      <template x-if="!['select','checkbox'].includes(c.type)">
+                        <input x-model="r.custom[c.key]" :placeholder="c.type === 'date' ? 'YYYY-MM-DD' : ''" :aria-label="c.label">
+                      </template>
+                    </td>
+                  </template>
+                  <td><div class="thumbs">
+                    <template x-for="pi in r.photo_indexes"><img :src="photoFor(pi)?.thumb" alt="" @click="previewProposal(pi)" :title="'Photo ' + (pi + 1)"></template>
+                  </div></td>
+                  <td><div class="row" style="gap:2px">
+                    <button class="btn btn-ghost btn-icon btn-sm" title="Ask AI to change this row" @click="openRowRefine(i)"><i data-lucide="sparkles"></i></button>
+                    <button class="btn btn-ghost btn-icon btn-sm" title="Remove row" @click="removeRow(i)"><i data-lucide="trash-2"></i></button>
+                  </div></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="refine-bar">
+          <textarea x-model="instruction" placeholder="Ask the AI to change the draft — e.g. “write descriptions in Portuguese”, “the tape rolls are 48 mm”, “you missed the scissors in photo 3”"
+                    @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); refine(null) }" aria-label="Instruction for the AI"></textarea>
+          <button class="btn btn-ai" @click="refine(null)" :disabled="!instruction.trim()"><i data-lucide="sparkles"></i>Ask AI</button>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <template x-if="step === 'upload'">
+          <div class="row" style="width:100%">
+            <span class="small muted grow" x-text="files.length ? files.length + ' photo(s) ready' : 'Add at least one photo'"></span>
+            <button class="btn" @click="close()">Cancel</button>
+            <button class="btn btn-ai" :disabled="!files.length" @click="analyze()"><i data-lucide="sparkles"></i>Analyze photos</button>
+          </div>
+        </template>
+        <template x-if="step === 'review'">
+          <div class="row" style="width:100%">
+            <button class="btn btn-ghost" @click="close()">Discard</button>
+            <span class="grow"></span>
+            <button class="btn btn-primary" @click="commit()" :disabled="!selectedCount"><i data-lucide="check"></i><span x-text="'Add ' + selectedCount + ' item' + (selectedCount === 1 ? '' : 's')"></span></button>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================= import -->
+  <div x-data="importer" x-show="open" x-cloak class="modal-back" @keydown.escape.window="open && (open = false)">
+    <div class="modal mid" role="dialog" aria-modal="true" aria-label="Import spreadsheet">
+      <div class="modal-head"><i data-lucide="file-spreadsheet"></i><h2>Import spreadsheet</h2>
+        <button class="btn btn-ghost btn-icon" @click="open = false" aria-label="Close"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <p class="muted">Each sheet becomes a table in <strong x-text="folderName"></strong>. Embedded photos are attached to the row they sit on.</p>
+        <input type="file" accept=".xlsx,.xlsm" @change="choose($event)">
+        <div class="alert alert-error" x-show="error" x-text="error"></div>
+        <div x-show="busy" class="row"><span class="spinner"></span> Reading…</div>
+        <div class="list" x-show="sheets.length"><table><tbody>
+          <template x-for="sh in sheets" :key="sh.sheet">
+            <tr>
+              <td style="width:30px"><input type="checkbox" :value="sh.sheet" x-model="picked" :disabled="!sh.header_row"></td>
+              <td>
+                <strong x-text="sh.name || sh.sheet"></strong>
+                <span class="small muted" x-text="` · ${sh.rows} rows · ${sh.images} photos`"></span>
+                <div class="small muted" x-text="sh.reason || mapping(sh)"></div>
+              </td>
+            </tr>
+          </template>
+        </tbody></table></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" @click="open = false">Cancel</button>
+        <button class="btn btn-primary" :disabled="busy || !picked.length" @click="run()"><i data-lucide="download"></i><span x-text="'Import ' + picked.length + ' sheet(s)'"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================= photo viewer -->
+  <div x-data="viewer" x-show="open" x-cloak class="viewer" role="dialog" aria-modal="true" aria-label="Photo viewer">
+    <div class="viewer-top">
+      <strong class="grow truncate" x-text="title || photo?.name || 'Photo'"></strong>
+      <span class="small" x-text="(index + 1) + ' / ' + photos.length"></span>
+      <button class="btn btn-icon" @click="zoomBy(-1)" aria-label="Zoom out"><i data-lucide="zoom-out"></i></button>
+      <span class="zoom-level" x-text="Math.round(zoom * 100) + '%'"></span>
+      <button class="btn btn-icon" @click="zoomBy(1)" aria-label="Zoom in"><i data-lucide="zoom-in"></i></button>
+      <button class="btn btn-icon" @click="reset()" aria-label="Reset zoom"><i data-lucide="maximize"></i></button>
+      <template x-if="photo?.original"><a class="btn btn-icon" :href="photo.original" download aria-label="Download original"><i data-lucide="download"></i></a></template>
+      <template x-if="writable && photo?.id">
+        <div class="row" style="gap:8px">
+          <button class="btn" @click="makeMain()" x-show="index > 0"><i data-lucide="star"></i><span class="hide-sm">Main photo</span></button>
+          <button class="btn btn-icon" @click="remove()" aria-label="Delete photo"><i data-lucide="trash-2"></i></button>
+        </div>
+      </template>
+      <button class="btn btn-icon" @click="close()" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="viewer-stage" x-ref="stage">
+      <template x-if="open && photo"><img x-ref="img" :src="photo.display" :alt="title"></template>
+      <button class="btn btn-icon viewer-nav prev" x-show="photos.length > 1" @click="go(-1)" aria-label="Previous"><i data-lucide="chevron-left"></i></button>
+      <button class="btn btn-icon viewer-nav next" x-show="photos.length > 1" @click="go(1)" aria-label="Next"><i data-lucide="chevron-right"></i></button>
+    </div>
+    <div class="viewer-bottom" x-show="photos.length > 1">
+      <div class="viewer-strip">
+        <template x-for="(p, i) in photos" :key="i"><img :src="p.thumb" :class="i === index && 'on'" @click="index = i; $nextTick(() => setupZoom())" alt=""></template>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/tabulator.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/sortable.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/panzoom.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/lucide.min.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="{{ brand['app.theme'] or 'auto' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}{{ brand['app.name'] }}{% endblock %}</title>
+  {% if brand['app.favicon'] %}
+  <link rel="icon" href="{{ url_for('main.branding', name='favicon.png') }}?v={{ brand_version }}">
+  {% else %}
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+  {% endif %}
+  {% block vendor_css %}{% endblock %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main.theme_css') }}?v={{ brand_version }}">
+  <script>
+    // Apply the user's theme override before paint to avoid a flash
+    (function () {
+      var t = localStorage.getItem("theme");
+      if (t) document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% block body %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

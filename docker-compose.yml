@@ -1,0 +1,31 @@
+services:
+  tara:
+    build: .
+    image: tara:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      # Generate once with: python -c "import secrets; print(secrets.token_urlsafe(48))"
+      # (if unset, a key is generated and stored in the data volume)
+      SECRET_KEY: ${SECRET_KEY:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-64}
+      # Set to your reverse proxy's IP (or "*") when running behind one
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+    volumes:
+      - tara-data:/data
+    extra_hosts:
+      # Lets the container reach an Ollama running on the Docker host
+      - "host.docker.internal:host-gateway"
+
+  # Optional local AI. Uncomment, then set the Ollama base URL to http://ollama:11434
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ollama-models:/root/.ollama
+  #   # deploy: { resources: { reservations: { devices: [ { capabilities: [gpu] } ] } } }
+
+volumes:
+  tara-data:
+  # ollama-models:

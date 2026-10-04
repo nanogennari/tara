@@ -1,0 +1,18 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Profile · {{ brand['app.name'] }}{% endblock %}
+{% block form %}
+<form method="post" class="form-stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="muted">Signed in as <strong>{{ current_user.username }}</strong> ({{ current_user.role }})</p>
+  <label>Display name<input name="display_name" value="{{ current_user.display_name or '' }}"></label>
+  <label>Email<input type="email" name="email" value="{{ current_user.email or '' }}"></label>
+  <fieldset>
+    <legend>Change password</legend>
+    <label>Current password<input type="password" name="current_password" autocomplete="current-password"></label>
+    <label>New password<input type="password" name="new_password" autocomplete="new-password" minlength="8"></label>
+    <label>Repeat new password<input type="password" name="new_password2" autocomplete="new-password" minlength="8"></label>
+  </fieldset>
+  <button class="btn btn-primary btn-block" type="submit">Save</button>
+  <p class="center"><a href="{{ url_for('main.index') }}">← Back to inventory</a></p>
+</form>
+{% endblock %}

@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ brand['app.name'] }}{% endblock %}
+{% block body %}
+<div x-data="admin" style="min-height:100%">
+  <header class="topbar" style="height:var(--header-h)">
+    <a class="brand" href="/">
+      {% if brand['app.logo'] %}<img src="{{ url_for('main.branding', name=brand['app.logo']) }}?v={{ brand_version }}" alt="">
+      {% else %}<img src="{{ url_for('static', filename='favicon.svg') }}" alt="">{% endif %}
+      <span class="name">{{ brand['app.name'] }}</span>
+    </a>
+    <span class="grow"></span>
+    <a class="btn" href="/"><i data-lucide="arrow-left"></i>Back to inventory</a>
+  </header>
+
+  <div class="admin" x-show="loaded" x-cloak>
+    <h1>Settings</h1>
+    <nav class="admin-tabs">
+      <template x-for="[k, label] in [['general','Appearance'],['users','Users'],['ai','AI assistant'],['usage','AI usage'],['search','Search'],['server','Server & data'],['activity','Activity']]">
+        <button :class="tab === k && 'on'" @click="tab = k" x-text="label"></button>
+      </template>
+    </nav>
+
+    <!-- ============================================ appearance -->
+    <section x-show="tab === 'general'" class="stack">
+      <div class="panel">
+        <h2>Identity</h2>
+        <div class="form-grid">
+          <label>App / organization name<input x-model="values['app.name']"></label>
+          <label>Tagline (login page)<input x-model="values['app.tagline']"></label>
+        </div>
+        <div class="row wrap" style="gap:24px;align-items:flex-start">
+          <div class="stack" style="gap:6px">
+            <span class="small" style="font-weight:600">Logo</span>
+            <div class="row">
+              <div class="brand-preview"><template x-if="branding.logo"><img :src="'/branding/' + branding.logo + '?t=' + Date.now()" alt=""></template><template x-if="!branding.logo"><i data-lucide="image"></i></template></div>
+              <div class="stack" style="gap:4px">
+                <label class="btn btn-sm">Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="sr-only" @change="uploadBrand('logo', $event)"></label>
+                <button class="btn btn-sm btn-ghost" x-show="branding.logo" @click="removeBrand('logo')">Remove</button>
+              </div>
+            </div>
+          </div>
+          <div class="stack" style="gap:6px">
+            <span class="small" style="font-weight:600">Favicon</span>
+            <div class="row">
+              <div class="brand-preview" style="width:40px;height:40px"><template x-if="branding.favicon"><img src="/branding/favicon.png" alt=""></template><template x-if="!branding.favicon"><i data-lucide="image"></i></template></div>
+              <div class="stack" style="gap:4px">
+                <label class="btn btn-sm">Upload<input type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" @change="uploadBrand('favicon', $event)"></label>
+                <button class="btn btn-sm btn-ghost" x-show="branding.favicon" @click="removeBrand('favicon')">Remove</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Colors</h2>
+        <div class="row wrap">
+          <input type="color" :value="values['app.primary_color']" @input="previewColor($event.target.value)" aria-label="Primary color">
+          <input style="width:110px" x-model="values['app.primary_color']" @change="previewColor(values['app.primary_color'])" class="mono">
+          <div class="swatches"><template x-for="c in swatches"><button class="swatch" :style="'background:' + c" @click="previewColor(c)" :aria-label="c"></button></template></div>
+        </div>
+        <p class="hint">Hover, soft and text shades are derived automatically and adjusted to keep readable contrast in light and dark mode.</p>
+        <div class="row wrap">
+          <button class="btn btn-primary">Primary button</button><span class="badge badge-primary">Badge</span><a href="#">A link</a>
+        </div>
+        <label style="max-width:260px">Default theme
+          <select x-model="values['app.theme']"><option value="auto">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select>
+        </label>
+      </div>
+      <div><button class="btn btn-primary" @click="save(['app.name','app.tagline','app.primary_color','app.theme'])" :disabled="busy">Save appearance</button></div>
+    </section>
+
+    <!-- ============================================ users -->
+    <section x-show="tab === 'users'" class="stack">
+      <div class="panel">
+        <h2>Users</h2>
+        <p class="hint"><strong>Admin</strong>: everything including settings and permanent deletion · <strong>Editor</strong>: add, edit, delete, archive · <strong>Viewer</strong>: read and search only.</p>
+        <div class="list"><table>
+          <thead><tr><th>User</th><th class="hide-sm">Last sign-in</th><th>Role</th><th>Active</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="u in users" :key="u.id">
+              <tr>
+                <td><strong x-text="u.display_name || u.username"></strong><div class="small muted" x-text="u.username + (u.email ? ' · ' + u.email : '')"></div></td>
+                <td class="hide-sm small muted" x-text="u.last_login ? rel(u.last_login) : 'never'"></td>
+                <td><select :value="u.role" @change="updateUser(u, {role: $event.target.value})" style="width:auto">
+                  <option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select></td>
+                <td><input type="checkbox" :checked="u.active" @change="updateUser(u, {active: $event.target.checked})" :aria-label="'Active ' + u.username"></td>
+                <td><div class="row" style="gap:4px;justify-content:flex-end">
+                  <button class="btn btn-sm" @click="resetPassword(u)">Reset password</button>
+                  <button class="btn btn-sm btn-ghost btn-icon" @click="deleteUser(u)" aria-label="Delete user"><i data-lucide="trash-2"></i></button>
+                </div></td>
+              </tr>
+            </template>
+          </tbody>
+        </table></div>
+      </div>
+      <form class="panel" @submit.prevent="createUser()">
+        <h2>Add user</h2>
+        <div class="form-grid">
+          <label>Username<input x-model="newUser.username" required autocomplete="off"></label>
+          <label>Display name<input x-model="newUser.display_name"></label>
+          <label>Email<input type="email" x-model="newUser.email"></label>
+          <label>Role<select x-model="newUser.role"><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label>
+          <label>Initial password<input type="password" x-model="newUser.password" minlength="8" required autocomplete="new-password"></label>
+        </div>
+        <div><button class="btn btn-primary"><i data-lucide="user-plus"></i>Create user</button></div>
+      </form>
+      <div class="panel">
+        <h2>Invite links</h2>
+        <p class="hint">Share a link so people can create their own account. Each link works a limited number of times.</p>
+        <form class="row wrap" style="align-items:flex-end" @submit.prevent="createInvite()">
+          <label style="width:130px">Role<select x-model="invite.role"><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label>
+          <label style="width:110px">Uses<input type="number" min="1" max="1000" x-model.number="invite.max_uses"></label>
+          <label style="width:150px">Expires in (days)<input type="number" min="0" x-model.number="invite.expires_days" placeholder="never"></label>
+          <label class="grow" style="min-width:180px">Note<input x-model="invite.note" placeholder="e.g. 2026 volunteers"></label>
+          <button class="btn btn-primary"><i data-lucide="link"></i>Generate link</button>
+        </form>
+        <div class="list" x-show="invites.length"><table>
+          <thead><tr><th>Link</th><th>Role</th><th>Used</th><th class="hide-sm">Expires</th><th class="hide-sm">Created</th><th></th></tr></thead>
+          <tbody><template x-for="i in invites" :key="i.id">
+            <tr :style="!i.usable && 'opacity:.55'">
+              <td style="max-width:320px"><div class="row" style="gap:6px">
+                <code class="small truncate" x-text="i.url"></code>
+                <button class="btn btn-sm btn-icon" x-show="i.usable" @click="copy(i.url)" aria-label="Copy link"><i data-lucide="copy"></i></button>
+              </div><div class="small muted" x-text="i.note || ''"></div></td>
+              <td x-text="i.role"></td>
+              <td x-text="`${i.uses} / ${i.max_uses}`"></td>
+              <td class="hide-sm small" x-text="i.expires_at ? fmt(i.expires_at) : 'never'"></td>
+              <td class="hide-sm small muted" x-text="rel(i.created_at) + (i.created_by ? ' · ' + i.created_by : '')"></td>
+              <td><span class="badge" x-show="!i.usable" x-text="i.revoked ? 'revoked' : 'used up / expired'"></span>
+                <button class="btn btn-sm" x-show="i.usable" @click="revokeInvite(i)">Revoke</button></td>
+            </tr>
+          </template></tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <label class="check"><input type="checkbox" x-model="values['server.allow_registration']" @change="save(['server.allow_registration'])"> Allow open self-registration without an invite (new accounts start as viewers)</label>
+      </div>
+    </section>
+
+    <!-- ============================================ AI -->
+    <section x-show="tab === 'ai'" class="stack">
+      <div class="panel">
+        <h2>Provider</h2>
+        <div class="provider-grid">
+          <template x-for="(meta, key) in providers" :key="key">
+            <button class="provider-card" :class="ai.provider === key && 'on'" @click="ai.provider = key; testResult = {}">
+              <strong x-text="meta.label"></strong>
+              <span class="small muted" x-text="meta.hint || (ai.providers[key]?.has_key ? 'Key saved' : (meta.needs_key ? 'Needs API key' : 'No key needed'))"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+      <div class="panel">
+        <h2 x-text="curMeta.label + ' settings'"></h2>
+        <div class="form-grid">
+          <label x-show="curMeta.needs_key || ai.provider === 'openai_compatible'">API key
+            <input type="password" x-model="cur.api_key" :placeholder="cur.has_key ? 'Saved — type to replace' : 'Paste API key'" autocomplete="off">
+          </label>
+          <label x-show="['ollama','openai_compatible','openai','anthropic'].includes(ai.provider)">Base URL
+            <input x-model="cur.base_url" :placeholder="ai.provider === 'ollama' ? 'http://host:11434' : 'Leave empty for the default endpoint'">
+          </label>
+          <label>Model
+            <input x-model="cur.model" list="model-list" placeholder="Model id">
+            <datalist id="model-list"><template x-for="m in modelOptions()"><option :value="m"></option></template></datalist>
+          </label>
+          <label x-show="ai.provider === 'anthropic'">Effort <span class="hint">higher = more careful counting, slower</span>
+            <select x-model="cur.effort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>
+          </label>
+          <label x-show="ai.provider !== 'anthropic'">Temperature<input type="number" step="0.1" min="0" max="2" x-model.number="cur.temperature"></label>
+          <label>Max output tokens<input type="number" min="1024" max="64000" x-model.number="cur.max_tokens"></label>
+          <label>Timeout (seconds)<input type="number" min="10" max="600" x-model.number="cur.timeout"></label>
+        </div>
+        <label class="check" x-show="ai.provider === 'anthropic'"><input type="checkbox" x-model="cur.fallback"> Server-side fallback if the model declines a request</label>
+        <label class="check" x-show="ai.provider === 'ollama'"><input type="checkbox" x-model="cur.think"> Let reasoning models think first <span class="hint">(slower — often 10–20× — sometimes more accurate counts)</span></label>
+        <div class="row wrap">
+          <button class="btn" @click="fetchModels()" :disabled="busy"><i data-lucide="list"></i>Load available models</button>
+          <button class="btn" @click="testAI()" :disabled="busy"><span class="spinner" x-show="busy === 'test'"></span><i data-lucide="plug-zap" x-show="busy !== 'test'"></i>Test connection</button>
+          <span class="badge" :class="testResult.ok ? 'badge-ok' : 'badge-danger'" x-show="testResult.message" x-text="testResult.message"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Context & prompt</h2>
+        <label>Organization context <span class="hint">sent with every request — who you are, what the inventory is for, naming conventions, language</span>
+          <textarea x-model="ai.org_context" rows="4" placeholder="SigmaCamp Brasil — a math & science camp. Inventory of camp materials stored between editions. Write descriptions in English; keep brand names."></textarea>
+        </label>
+        <label>Max existing rows sent for context<input type="number" min="0" max="2000" x-model.number="ai.max_existing_items" style="max-width:140px"></label>
+        <details>
+          <summary class="small" style="cursor:pointer">Advanced: override the system prompt</summary>
+          <textarea x-model="ai.system_prompt" rows="8" placeholder="Leave empty to use the built-in cataloguing instructions." style="margin-top:8px"></textarea>
+        </details>
+      </div>
+      <div><button class="btn btn-primary" @click="values['ai.org_context'] = ai.org_context; values['ai.system_prompt'] = ai.system_prompt; values['ai.max_existing_items'] = ai.max_existing_items; saveAI()" :disabled="busy">Save AI settings</button></div>
+    </section>
+
+    <!-- ============================================ AI usage -->
+    <section x-show="tab === 'usage'" class="stack">
+      <div class="row wrap">
+        <h2 class="grow">AI token usage</h2>
+        <select style="width:auto" x-model.number="usageDays" @change="loadUsage()">
+          <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option>
+        </select>
+      </div>
+      <div class="panel">
+        <h2>Per user</h2>
+        <div class="list"><table>
+          <thead><tr><th>User</th><th>Calls</th><th>Input tokens</th><th>Output tokens</th><th class="hide-sm">Total (all time)</th><th class="hide-sm">Last used</th></tr></thead>
+          <tbody>
+            <template x-for="u in usage?.per_user || []" :key="u.user_id ?? 'none'">
+              <tr><td><strong x-text="u.user"></strong></td>
+                <td x-text="u.calls + (u.failed ? ` (${u.failed} failed)` : '')"></td>
+                <td class="mono" x-text="num(u.input)"></td><td class="mono" x-text="num(u.output)"></td>
+                <td class="hide-sm mono" x-text="u.all_time ? num(u.all_time.input + u.all_time.output) : ''"></td>
+                <td class="hide-sm small muted" x-text="u.last ? rel(u.last) : ''"></td></tr>
+            </template>
+            <tr x-show="!(usage?.per_user || []).length"><td colspan="6" class="muted">No AI calls in this period.</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="form-grid">
+        <div class="panel">
+          <h2>Per model</h2>
+          <template x-for="m in usage?.per_model || []"><div class="row small"><span class="grow mono" x-text="m.provider + ':' + m.model"></span><span x-text="m.calls + ' calls · ' + num(m.input + m.output) + ' tok'"></span></div></template>
+        </div>
+        <div class="panel">
+          <h2>Per feature</h2>
+          <template x-for="k in usage?.per_kind || []"><div class="row small"><span class="grow" x-text="{propose: 'Photo analysis', refine: 'Draft changes', chat: 'Ask AI chat'}[k.kind] || k.kind"></span><span x-text="k.calls + ' calls · ' + num(k.input + k.output) + ' tok'"></span></div></template>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Recent calls</h2>
+        <div class="list" style="max-height:420px;overflow:auto"><table>
+          <thead><tr><th>When</th><th>User</th><th>Feature</th><th class="hide-sm">Model</th><th>In / out</th><th class="hide-sm">Time</th></tr></thead>
+          <tbody><template x-for="r in usage?.recent || []">
+            <tr :style="!r.ok && 'color:var(--danger)'"><td class="small" :title="fmt(r.at)" x-text="rel(r.at)"></td><td x-text="r.user || '—'"></td><td x-text="r.kind"></td>
+              <td class="hide-sm small mono" x-text="r.model"></td><td class="mono small" x-text="num(r.input) + ' / ' + num(r.output)"></td><td class="hide-sm small" x-text="r.seconds + 's'"></td></tr>
+          </template></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ============================================ search -->
+    <section x-show="tab === 'search'" class="stack">
+      <div class="panel">
+        <h2>Semantic search</h2>
+        <p class="hint">Every item, table and folder gets an embedding when it's created or edited, so search finds things by meaning (“painkiller” → Advil) and across languages. Fuzzy text matching always works, even with embeddings off.</p>
+        <div class="form-grid">
+          <label>Embedding provider
+            <select x-model="values['search.provider']" @change="values['search.model'] = embedModels()[0] || ''">
+              <template x-for="(m, k) in embedProviders"><option :value="k" x-text="m.label" :selected="values['search.provider'] === k"></option></template>
+            </select>
+          </label>
+          <label x-show="values['search.provider'] !== 'off'">Model
+            <input x-model="values['search.model']" list="embed-models">
+            <datalist id="embed-models"><template x-for="m in embedModels()"><option :value="m"></option></template></datalist>
+          </label>
+          <label x-show="values['search.provider'] !== 'off'">Minimum similarity <span class="hint">lower = more (looser) results</span>
+            <input type="number" step="0.05" min="0" max="0.95" x-model.number="values['search.min_similarity']">
+          </label>
+        </div>
+        <p class="hint" x-show="['openai','google','ollama','openai_compatible'].includes(values['search.provider'])">Uses the API key / base URL configured for this provider in the AI assistant tab.</p>
+        <div><button class="btn btn-primary" @click="save(['search.provider','search.model','search.min_similarity'])">Save</button></div>
+      </div>
+      <div class="panel" x-show="status">
+        <h2>Index status</h2>
+        <div class="row wrap">
+          <span x-text="status?.model || 'Semantic search off'" class="badge badge-primary"></span>
+          <span class="small" x-text="`${status?.embedded} of ${status?.total} entries embedded`" x-show="status?.model"></span>
+          <span class="badge badge-warn" x-show="status?.stale" x-text="status?.stale + ' outdated'"></span>
+          <span class="row small muted" x-show="status?.busy"><span class="spinner"></span> indexing…</span>
+        </div>
+        <div class="progress" x-show="status?.model && status?.total"><div :style="`width:${status ? Math.round(100 * status.embedded / Math.max(1, status.total)) : 0}%`"></div></div>
+        <div class="alert alert-error" x-show="status?.last_error" x-text="'Last error: ' + status?.last_error"></div>
+        <div><button class="btn" @click="rebuild()"><i data-lucide="refresh-cw"></i>Rebuild index</button></div>
+      </div>
+      <div class="panel">
+        <h2>Try a search</h2>
+        <div class="row"><input x-model="searchQ" @keydown.enter="testSearch()" placeholder="e.g. remédio para dor"><button class="btn" @click="testSearch()">Search</button></div>
+        <div class="list" x-show="searchRes?.results?.length"><table><tbody>
+          <template x-for="r in searchRes?.results || []">
+            <tr><td><strong x-text="r.title"></strong><div class="small muted" x-text="(r.path || []).join(' / ')"></div></td>
+              <td class="small" x-text="r.type"></td>
+              <td><template x-for="m in r.match"><span class="badge" style="margin-right:4px" x-text="m"></span></template></td>
+              <td class="small mono" x-text="r.similarity ?? ''"></td></tr>
+          </template>
+        </tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ============================================ server -->
+    <section x-show="tab === 'server'" class="stack">
+      <div class="panel">
+        <h2>General</h2>
+        <div class="form-grid">
+          <label>Public base URL <span class="hint">optional, for links</span><input x-model="values['server.base_url']" placeholder="https://inventory.example.org"></label>
+          <label>Session length (days)<input type="number" min="1" max="365" x-model.number="values['server.session_days']"></label>
+          <label>Trash retention (days)<input type="number" min="1" x-model.number="values['server.trash_days']"></label>
+          <label>Flag tables not updated for (days)<input type="number" min="7" x-model.number="values['server.stale_days']"></label>
+          <label>Timezone <span class="hint">used for dates shown in the app and in exports</span>
+            <input x-model="values['server.timezone']" list="tz-list" placeholder="America/Sao_Paulo">
+            <datalist id="tz-list"><template x-for="z in timezones"><option :value="z"></option></template></datalist>
+          </label>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Photos</h2>
+        <div class="form-grid">
+          <label>Display size (longest side, px)<input type="number" min="512" max="4096" step="64" x-model.number="values['server.image_max_px']"></label>
+          <label>JPEG quality<input type="number" min="40" max="95" x-model.number="values['server.image_quality']"></label>
+        </div>
+        <p class="hint">Originals are kept (up to 4096 px, location metadata removed). These settings affect the viewer image.</p>
+      </div>
+      <div><button class="btn btn-primary" @click="save(['server.base_url','server.session_days','server.trash_days','server.stale_days','server.timezone','server.image_max_px','server.image_quality'])">Save</button></div>
+      <div class="panel">
+        <h2>Backup & restore</h2>
+        <p class="hint">A backup is a single .zip with the database and all photos and branding files.</p>
+        <div class="row wrap">
+          <a class="btn" href="/api/admin/backup"><i data-lucide="download"></i>Download backup</a>
+          <label class="btn btn-danger"><i data-lucide="upload"></i>Restore from backup…<input type="file" accept=".zip" class="sr-only" @change="restore($event)"></label>
+          <span class="spinner" x-show="busy === 'restore'"></span>
+        </div>
+        <div class="row wrap">
+          <a class="btn" href="/api/export/xlsx"><i data-lucide="file-spreadsheet"></i>Export everything to Excel</a>
+          <button class="btn" @click="runMaintenance()"><i data-lucide="brush-cleaning"></i>Run cleanup now</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================ activity -->
+    <section x-show="tab === 'activity'" class="stack">
+      <div class="panel">
+        <h2>Recent activity</h2>
+        <div class="list"><table>
+          <thead><tr><th>When</th><th>Who</th><th>What</th><th class="hide-sm">Details</th></tr></thead>
+          <tbody><template x-for="a in audit">
+            <tr><td class="small" :title="fmt(a.at)" x-text="rel(a.at)"></td><td x-text="a.user || '—'"></td>
+              <td><span class="badge" x-text="a.action"></span> <span x-text="a.entity"></span></td>
+              <td class="hide-sm small muted mono" x-text="a.detail || ''"></td></tr>
+          </template></tbody>
+        </table></div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/lucide.min.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "auth/_layout.html" %}
+{% block title %}Create account · {{ brand['app.name'] }}{% endblock %}
+{% block form %}
+<form method="post" class="form-stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Username<input name="username" autocomplete="username" required autofocus></label>
+  <label>Email<input type="email" name="email" autocomplete="email"></label>
+  <label>Password<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+  <button class="btn btn-primary btn-block" type="submit">Create account</button>
+  <p class="muted center small">New accounts are read-only until an admin grants edit access.</p>
+  <p class="muted center"><a href="{{ url_for('auth.login') }}">Back to sign in</a></p>
+</form>
+{% endblock %}
