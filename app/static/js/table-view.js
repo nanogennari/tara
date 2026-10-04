@@ -450,18 +450,16 @@ export class TableView {
       if (def.editor && !cell.getElement().classList.contains("tabulator-editing")) cell.edit(true);
     });
     g.on("cellEdited", (cell) => this.saveCell(cell));
-    g.on("rowContext", (e, row) => {
-      if (e.target.closest(".tabulator-editing, input, textarea")) return;
+    // Row menu: right-click anywhere on a row (any cell, photos, checkbox column)
+    host.addEventListener("contextmenu", (e) => {
+      const rowEl = e.target.closest(".tabulator-row");
+      if (!rowEl) return;
+      // Keep the browser's menu while typing in a cell editor (copy/paste/spellcheck)
+      if (e.target.closest(".tabulator-editing") && e.target.matches("input, textarea")) return;
+      const row = this.grid.getRow(Number(rowEl.dataset.id));
+      if (!row) return;
       e.preventDefault();
-      const it = row.getData();
-      contextMenu(e.clientX, e.clientY, [
-        { label: "Copy link to this item", icon: "link", action: () => this.s.copyLink(`/i/${it.id}`, "Item link") },
-        it.photos.length && { label: "View photos", icon: "image", action: () => this.openViewer(it.id, 0) },
-        w && { label: "Add photos…", icon: "image-plus", action: () => this.pickPhotos(it.id) },
-        w && { label: "Insert row below", icon: "plus", action: () => this.addRow(it.id) },
-        w && "-",
-        w && { label: "Delete row", icon: "trash-2", danger: true, action: () => { this.grid.deselectRow(); row.select(); this.bulkAction("delete"); } },
-      ]);
+      this.rowMenu(row, e.clientX, e.clientY);
     });
     g.on("rowMoved", () => this.saveOrder());
     g.on("columnResized", debounce((col) => {
@@ -511,6 +509,31 @@ export class TableView {
     });
     wrap.appendChild(cb);
     return wrap;
+  }
+
+  rowMenu(row, x, y) {
+    const w = this.writable;
+    const it = row.getData();
+    // Acting on a row that is part of a multi-selection applies to the whole selection
+    const sel = this.grid.getSelectedRows();
+    const targets = row.isSelected() && sel.length > 1 ? sel : [row];
+    const n = targets.length;
+    const many = n > 1 ? ` (${n} rows)` : "";
+    const allEst = targets.every((r) => r.getData().quantity?.estimated);
+    const run = (action) => { this.grid.deselectRow(); targets.forEach((r) => r.select()); this.bulkAction(action); };
+    contextMenu(x, y, [
+      n === 1 && { label: "Copy link to this item", icon: "link", action: () => this.s.copyLink(`/i/${it.id}`, "Item link") },
+      n === 1 && it.photos.length && { label: "View photos", icon: "image", action: () => this.openViewer(it.id, 0) },
+      w && n === 1 && { label: "Add photos…", icon: "image-plus", action: () => this.pickPhotos(it.id) },
+      w && n === 1 && { label: "Insert row below", icon: "plus", action: () => this.addRow(it.id) },
+      w && "-",
+      w && (allEst
+        ? { label: `Mark as exact${many}`, icon: "equal", action: () => run("clear_estimated") }
+        : { label: `Mark as estimate (~)${many}`, icon: "equal-approximately", action: () => run("set_estimated") }),
+      w && { label: `Move to table…${many}`, icon: "arrow-right-left", action: () => run("move") },
+      w && "-",
+      w && { label: `Delete${n > 1 ? ` ${n} rows` : " row"}`, icon: "trash-2", danger: true, action: () => run("delete") },
+    ]);
   }
 
   applyFilter() {
@@ -696,7 +719,7 @@ export class TableView {
       ${this.writable ? `
       <button class="btn btn-sm btn-danger" data-b="delete">${icon("trash-2")} Delete</button>
       <button class="btn btn-sm" data-b="move">${icon("arrow-right-left")} Move to table…</button>
-      <button class="btn btn-sm" data-b="set_estimated">${icon("approximately-equal")} Mark estimated</button>
+      <button class="btn btn-sm" data-b="set_estimated">${icon("equal-approximately")} Mark estimated</button>
       <button class="btn btn-sm" data-b="clear_estimated">Mark exact</button>
       ${rows.some((r) => r.getData().ai_generated) ? `<button class="btn btn-sm" data-b="clear_ai_flag">${icon("check")} Confirm AI rows</button>` : ""}` : ""}
       <span class="grow"></span>
