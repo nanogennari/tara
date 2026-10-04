@@ -43,6 +43,13 @@ with sync_playwright() as p:
     page.wait_for_selector(".shell")
     shot(page, "01-empty")
 
+    def check_icons(where):
+        big = page.evaluate("""() => [...document.querySelectorAll('.btn svg, .chip svg')]
+            .filter(s => s.getBoundingClientRect().width > 18).map(s => s.closest('.btn,.chip').textContent.trim().slice(0, 30))""")
+        if big:
+            errors.append(f"layout: oversized button icons on {where}: {big[:5]}")
+    check_icons("empty state")
+
     # ---- import via the UI dialog into a new folder
     tree = page.locator("#tree")
     if not tree.locator(".node").count():
@@ -117,6 +124,7 @@ with sync_playwright() as p:
     # ---- AI wizard (upload step only)
     page.click('.view:not([hidden]) [data-act="ai"]')
     page.wait_for_selector(".dropzone")
+    check_icons("AI wizard")
     shot(page, "09-ai-wizard")
     page.keyboard.press("Escape")
 
@@ -187,6 +195,15 @@ with sync_playwright() as p:
     page.goto(BASE + "/admin/#ai")
     page.wait_for_selector(".provider-card")
     shot(page, "14-admin-ai")
+    # Save buttons must be enabled when idle, and saving must work
+    page.goto(BASE + "/admin/#general")
+    save = page.locator("text=Save appearance")
+    expect(save).to_be_enabled()
+    page.fill("input[x-model=\"values['app.tagline']\"]", "Smoke-tested tagline")
+    save.click()
+    page.wait_for_selector(".toast >> text=Settings saved")
+    page.goto(BASE + "/admin/#ai")
+    expect(page.locator("text=Save AI settings")).to_be_enabled()
     page.goto(BASE + "/admin/#search")
     page.wait_for_timeout(1500)
     shot(page, "15-admin-search")

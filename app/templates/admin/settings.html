@@ -66,7 +66,7 @@
           <select x-model="values['app.theme']"><option value="auto">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select>
         </label>
       </div>
-      <div><button class="btn btn-primary" @click="save(['app.name','app.tagline','app.primary_color','app.theme'])" :disabled="busy">Save appearance</button></div>
+      <div><button class="btn btn-primary" @click="save(['app.name','app.tagline','app.primary_color','app.theme'])" :disabled="!!busy">Save appearance</button></div>
     </section>
 
     <!-- ============================================ users -->
@@ -173,8 +173,8 @@
         <label class="check" x-show="ai.provider === 'anthropic'"><input type="checkbox" x-model="cur.fallback"> Server-side fallback if the model declines a request</label>
         <label class="check" x-show="ai.provider === 'ollama'"><input type="checkbox" x-model="cur.think"> Let reasoning models think first <span class="hint">(slower — often 10–20× — sometimes more accurate counts)</span></label>
         <div class="row wrap">
-          <button class="btn" @click="fetchModels()" :disabled="busy"><i data-lucide="list"></i>Load available models</button>
-          <button class="btn" @click="testAI()" :disabled="busy"><span class="spinner" x-show="busy === 'test'"></span><i data-lucide="plug-zap" x-show="busy !== 'test'"></i>Test connection</button>
+          <button class="btn" @click="fetchModels()" :disabled="!!busy"><i data-lucide="list"></i>Load available models</button>
+          <button class="btn" @click="testAI()" :disabled="!!busy"><span class="spinner" x-show="busy === 'test'"></span><i data-lucide="plug-zap" x-show="busy !== 'test'"></i>Test connection</button>
           <span class="badge" :class="testResult.ok ? 'badge-ok' : 'badge-danger'" x-show="testResult.message" x-text="testResult.message"></span>
         </div>
       </div>
@@ -189,7 +189,7 @@
           <textarea x-model="ai.system_prompt" rows="8" placeholder="Leave empty to use the built-in cataloguing instructions." style="margin-top:8px"></textarea>
         </details>
       </div>
-      <div><button class="btn btn-primary" @click="values['ai.org_context'] = ai.org_context; values['ai.system_prompt'] = ai.system_prompt; values['ai.max_existing_items'] = ai.max_existing_items; saveAI()" :disabled="busy">Save AI settings</button></div>
+      <div><button class="btn btn-primary" @click="values['ai.org_context'] = ai.org_context; values['ai.system_prompt'] = ai.system_prompt; values['ai.max_existing_items'] = ai.max_existing_items; saveAI()" :disabled="!!busy">Save AI settings</button></div>
     </section>
 
     <!-- ============================================ AI usage -->
@@ -320,7 +320,7 @@
         </div>
         <div class="row wrap">
           <a class="btn" href="/api/export/xlsx"><i data-lucide="file-spreadsheet"></i>Export everything to Excel</a>
-          <button class="btn" @click="runMaintenance()"><i data-lucide="brush-cleaning"></i>Run cleanup now</button>
+          <button class="btn" @click="runMaintenance()"><i data-lucide="brush"></i>Run cleanup now</button>
         </div>
       </div>
     </section>
