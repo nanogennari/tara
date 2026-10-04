@@ -18,6 +18,7 @@ def _shell(open_target=None):
     return render_template("app.html", user_json={
         "id": current_user.id, "name": current_user.name, "role": current_user.role,
         "can_edit": current_user.can_edit, "is_admin": current_user.is_admin,
+        "prefs": current_user.prefs or {},
     }, stale_days=settings.get("server.stale_days"), timezone=settings.get("server.timezone") or "UTC",
         open_target=open_target)
 

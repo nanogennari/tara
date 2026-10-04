@@ -1,40 +1,17 @@
 // Table view: header (path, title, summary, last-updated), toolbar, bulk bar and the Tabulator grid.
 import { ageDays, api, confirmDialog, contextMenu, debounce, del, esc, fmtDateTime, get, icon, icons,
   patch, post, promptDialog, put, qtyFormat, relTime, tablePicker, toast, toastError } from "./util.js";
+import { gridDefault, saveTablePrefs, screenSize, setGridDefault, tablePrefs } from "./prefs.js";
 
 const TYPE_LABELS = { text: "Text", longtext: "Long text", number: "Number", date: "Date", checkbox: "Checkbox", select: "Choice list", url: "Link" };
 const SOON_DAYS = 60;
 
-// ---- Row density & text size (user preference, all tables) -------------------------
+// ---- Row density & text size presets (values saved per user, per table, per screen size)
 const ROW_PRESETS = [["Compact", 28], ["Normal", 36], ["Comfortable", 48], ["Large photos", 80]];
 const FONT_PRESETS = [["Small", 12], ["Normal", 13], ["Large", 15], ["Extra large", 17]];
-const VIEW_KEY = "grid.view";
-export const gridView = { rowH: 36, font: 13, ...JSON.parse(localStorage.getItem(VIEW_KEY) || "{}") };
-
-export function applyGridView() {
-  const { rowH, font } = gridView;
-  const line = Math.round(font * 1.45);
-  const thumb = Math.max(20, rowH - 8);
-  const root = document.documentElement.style;
-  root.setProperty("--grid-font", `${font}px`);
-  root.setProperty("--row-h", `${rowH}px`);
-  root.setProperty("--cell-pad", `${Math.max(3, Math.round((rowH - line) / 2))}px`);
-  root.setProperty("--thumb", `${thumb}px`);
-  root.setProperty("--photo-pad", `${Math.max(2, Math.round((rowH - thumb) / 2))}px`);
-}
-applyGridView();
-
-function setGridView(patch) {
-  Object.assign(gridView, patch);
-  localStorage.setItem(VIEW_KEY, JSON.stringify(gridView));
-  applyGridView();
-  window.dispatchEvent(new CustomEvent("grid:view"));
-}
-
-/** How many thumbnails fit in the photo cell at the current size. */
-const thumbsShown = () => (gridView.rowH <= 40 ? 3 : gridView.rowH <= 56 ? 2 : 1);
-const DEFAULT_WIDTHS = { description: 320, quantity: 120, observation: 300, photos: 110 };
-const MOBILE_WIDTHS = { description: 200, quantity: 100, observation: 190, photos: 150 };
+// Columns are sized to their content ("fitData"); long text wraps beyond these maximums.
+const MAX_WIDTHS = { description: 460, observation: 420, longtext: 360, other: 280 };
+const MAX_WIDTHS_PHONE = { description: 240, observation: 220, longtext: 220, other: 180 };
 const isMobile = () => matchMedia("(max-width: 600px)").matches;
 
 export class TableView {
@@ -46,12 +23,10 @@ export class TableView {
     this.data = null;
     this.grid = null;
     this.filterText = "";
-    this.showUpdated = JSON.parse(localStorage.getItem(`tv.updated.${this.id}`) || "false");
-    this.showCreated = JSON.parse(localStorage.getItem(`tv.created.${this.id}`) || "false");
     this.refreshTree = debounce(() => this.s.loadTree(), 700);
     el.classList.add("table-view");
     // Re-measure rows when row height / text size changes (any table's View panel)
-    this.onGridView = () => this.grid?.redraw(true);
+    this.onGridView = () => { this.applyView(); this.grid?.redraw(true); };
     window.addEventListener("grid:view", this.onGridView);
     // Rebuild with phone column widths when crossing the mobile breakpoint
     this.mq = matchMedia("(max-width: 600px)");
@@ -93,10 +68,41 @@ export class TableView {
 
   get writable() { return !!this.data?.writable; }
 
+  // ---- personal view settings for this table (current screen size)
+  get tp() { return tablePrefs(this.id); }
+  view() {
+    const d = gridDefault(), tp = this.tp;
+    return { rowH: tp.rowH ?? d.rowH, font: tp.font ?? d.font, custom: tp.rowH != null || tp.font != null };
+  }
+  applyView() {
+    const { rowH, font } = this.view();
+    const line = Math.round(font * 1.45), thumb = Math.max(20, rowH - 8), st = this.el.style;
+    st.setProperty("--grid-font", `${font}px`);
+    st.setProperty("--row-h", `${rowH}px`);
+    st.setProperty("--cell-pad", `${Math.max(3, Math.round((rowH - line) / 2))}px`);
+    st.setProperty("--thumb", `${thumb}px`);
+    st.setProperty("--photo-pad", `${Math.max(2, Math.round((rowH - thumb) / 2))}px`);
+  }
+  thumbsShown() { const h = this.view().rowH; return h <= 40 ? 3 : h <= 56 ? 2 : 1; }
+  isHidden(c) {
+    if (c.key === "description") return false;
+    const hidden = this.tp.hidden;
+    return hidden ? hidden.includes(c.key) : !!c.hidden;
+  }
+  setHidden(key, hide) {
+    const cur = new Set(this.tp.hidden ?? this.data.columns.filter((c) => c.hidden).map((c) => c.key));
+    hide ? cur.add(key) : cur.delete(key);
+    saveTablePrefs(this.id, { hidden: [...cur] });
+    const col = this.data.columns.find((c) => c.key === key);
+    const field = col?.type === "builtin" ? key : `custom.${key}`;
+    hide ? this.grid.hideColumn(field) : this.grid.showColumn(field);
+  }
+
   render() {
     const d = this.data;
     const scrollTop = this.grid?.rowManager?.element?.scrollTop;
     this.destroy();
+    this.applyView();
     const meta = this.s.table(this.id) || d;
     const updatedAt = meta.content_updated_at || d.content_updated_at;
     const updatedBy = meta.content_updated_by || d.content_updated_by;
@@ -177,7 +183,7 @@ export class TableView {
         "add-row": () => this.addRow(),
         ai: () => window.dispatchEvent(new CustomEvent("ai:open", { detail: { tableId: this.id } })),
         columns: () => this.columnsMenu(r.left, r.bottom + 4),
-        view: () => viewPanel(b),
+        view: () => viewPanel(b, this),
         export: () => contextMenu(r.left, r.bottom + 4, [
           { label: "Excel (.xlsx) with photos", icon: "file-spreadsheet", action: () => { location.href = `/api/export/xlsx?tables=${this.id}`; } },
           { label: "CSV", icon: "file-text", action: () => { location.href = `/api/tables/${this.id}/export.csv`; } },
@@ -267,20 +273,26 @@ export class TableView {
     const cols = [];
     const mobile = isMobile();
     let prio = 3;
-    for (const c of this.data.columns) {
+    const tp = this.tp;
+    const columns = [...this.data.columns];
+    if (tp.order) {
+      const pos = (k) => { const i = tp.order.indexOf(k); return i < 0 ? 1e6 : i; };
+      columns.sort((a, b) => pos(a.key) - pos(b.key));
+    }
+    for (const c of columns) {
       // Default widths flex to fill the screen; widths the user dragged are kept as-is.
-      const userWidth = c.width && c.width !== DEFAULT_WIDTHS[c.key] && c.width !== 150;
-      const grow = { description: 3, observation: 3, quantity: 1, photos: 0 }[c.key] ?? (c.type === "longtext" ? 2 : 1);
+      const maxes = mobile ? MAX_WIDTHS_PHONE : MAX_WIDTHS;
+      const maxWidth = c.key === "photos" ? undefined
+        : maxes[c.key] ?? (c.type === "longtext" ? maxes.longtext : maxes.other);
       const base = {
-        title: c.label || c.key, field: c.key, visible: !c.hidden,
-        // Phones: fixed readable widths and horizontal scrolling instead of squeezing columns
-        ...(mobile ? { width: MOBILE_WIDTHS[c.key] ?? (c.type === "longtext" ? 200 : 140) }
-          : userWidth ? { width: c.width } : grow ? { widthGrow: grow } : { width: c.width }),
-        minWidth: c.key === "photos" ? 150 : c.key === "quantity" ? 100 : 90, headerMenu: () => this.headerMenu(c), headerSort: c.key !== "photos",
+        title: c.label || c.key, field: c.key, visible: !this.isHidden(c),
+        // Widths the user dragged win; otherwise as wide as the content, up to a maximum (then wrap)
+        ...(tp.widths?.[c.key] ? { width: tp.widths[c.key] } : { maxWidth }),
+        minWidth: c.key === "description" ? 140 : 60, headerMenu: () => this.headerMenu(c), headerSort: c.key !== "photos",
         responsive: c.key === "description" ? 0 : c.key === "quantity" ? 1 : c.key === "photos" ? 2 : prio++,
       };
       if (c.key === "description") {
-        cols.push({ ...base, editor: w && "textarea", minWidth: 180, formatter: (cell) => {
+        cols.push({ ...base, editor: w && "textarea", formatter: (cell) => {
           const r = cell.getRow().getData();
           return esc(cell.getValue() || "") + (r.ai_generated ? '<span class="ai-badge" title="Added by AI — edit to confirm">AI</span>' : "");
         }, editorParams: { verticalNavigation: "table", shiftEnterSubmit: true } });
@@ -299,14 +311,14 @@ export class TableView {
       }
     }
     cols.push({
-      title: "Added", field: "created_at", visible: this.showCreated, width: 200, headerSort: true, responsive: 98,
+      title: "Added", field: "created_at", visible: !!tp.showCreated, width: tp.widths?.created_at || 200, headerSort: true, responsive: 98,
       formatter: (cell) => {
         const r = cell.getRow().getData();
         return `<span class="updated-cell" title="Added ${esc(fmtDateTime(r.created_at))}${r.created_by ? " by " + esc(r.created_by) : ""}">${esc(fmtDateTime(r.created_at))}${r.created_by ? " · " + esc(r.created_by) : ""}</span>`;
       },
     });
     cols.push({
-      title: "Updated", field: "updated_at", visible: this.showUpdated, width: 150, headerSort: true, responsive: 99,
+      title: "Updated", field: "updated_at", visible: !!tp.showUpdated, width: tp.widths?.updated_at || 150, headerSort: true, responsive: 99,
       formatter: (cell) => {
         const r = cell.getRow().getData();
         return `<span class="updated-cell" title="${esc(fmtDateTime(r.updated_at))}">${esc(relTime(r.updated_at))}${r.updated_by ? " · " + esc(r.updated_by) : ""}</span>`;
@@ -316,12 +328,12 @@ export class TableView {
   }
 
   headerMenu(c) {
-    if (!this.writable) return [{ label: "Hide column", action: () => this.updateColumn(c.key, { hidden: true }) }];
+    if (!this.writable) return c.key === "description" ? [] : [{ label: "Hide column", action: () => this.setHidden(c.key, true) }];
     const builtin = c.type === "builtin";
     return [
       { label: "Rename…", action: () => this.renameColumn(c) },
       !builtin && { label: `Type: ${TYPE_LABELS[c.type]} — change…`, action: () => this.columnDialog(c) },
-      c.key !== "description" && { label: "Hide column", action: () => this.updateColumn(c.key, { hidden: true }) },
+      c.key !== "description" && { label: "Hide column", action: () => this.setHidden(c.key, true) },
       { separator: true },
       { label: "Add column…", action: () => this.columnDialog() },
       !builtin && { separator: true },
@@ -330,20 +342,24 @@ export class TableView {
   }
 
   columnsMenu(x, y) {
+    const tp = this.tp;
     const items = this.data.columns.map((c) => ({
-      label: `${c.hidden ? "☐" : "☑"}  ${c.label || c.key}`, disabled: c.key === "description",
-      action: () => this.updateColumn(c.key, { hidden: !c.hidden }),
+      label: `${this.isHidden(c) ? "☐" : "☑"}  ${c.label || c.key}`, disabled: c.key === "description",
+      action: () => this.setHidden(c.key, !this.isHidden(c)),
     }));
-    items.push({ label: `${this.showCreated ? "☑" : "☐"}  Added (who / when)`, action: () => {
-      this.showCreated = !this.showCreated;
-      localStorage.setItem(`tv.created.${this.id}`, JSON.stringify(this.showCreated));
-      this.showCreated ? this.grid.showColumn("created_at") : this.grid.hideColumn("created_at");
-    } });
-    items.push({ label: `${this.showUpdated ? "☑" : "☐"}  Updated (who / when)`, action: () => {
-      this.showUpdated = !this.showUpdated;
-      localStorage.setItem(`tv.updated.${this.id}`, JSON.stringify(this.showUpdated));
-      this.showUpdated ? this.grid.showColumn("updated_at") : this.grid.hideColumn("updated_at");
-    } });
+    const toggle = (pref, field) => () => {
+      const on = !this.tp[pref];
+      saveTablePrefs(this.id, { [pref]: on || null });
+      on ? this.grid.showColumn(field) : this.grid.hideColumn(field);
+    };
+    items.push({ label: `${tp.showCreated ? "☑" : "☐"}  Added (who / when)`, action: toggle("showCreated", "created_at") });
+    items.push({ label: `${tp.showUpdated ? "☑" : "☐"}  Updated (who / when)`, action: toggle("showUpdated", "updated_at") });
+    if (tp.hidden || tp.widths || tp.order) {
+      items.push("-", { label: "Reset my columns (shown, widths, order)", icon: "rotate-ccw", action: () => {
+        saveTablePrefs(this.id, { hidden: null, widths: null, order: null });
+        this.render();
+      } });
+    }
     if (this.writable) items.push("-", { label: "Add column…", icon: "plus", action: () => this.columnDialog() });
     contextMenu(x, y, items);
   }
@@ -416,7 +432,7 @@ export class TableView {
       data: this.data.items,
       index: "id",
       height: "100%",
-      layout: mobile ? "fitData" : "fitColumns",
+      layout: "fitData",
       responsiveLayout: false,
       placeholder: "",
       movableRows: w && !mobile,
@@ -464,9 +480,12 @@ export class TableView {
     g.on("rowMoved", () => this.saveOrder());
     g.on("columnResized", debounce((col) => {
       const key = colKey(col.getField());
-      if (key) this.updateColumnSilently(key, { width: Math.round(col.getWidth()) });
+      if (key) saveTablePrefs(this.id, { widths: { ...(this.tp.widths || {}), [key]: Math.round(col.getWidth()) } });
     }, 400));
-    g.on("columnMoved", () => this.saveColumnOrder());
+    g.on("columnMoved", () => {
+      const keys = this.grid.getColumns().map((c) => colKey(c.getField())).filter((k) => k && this.data.columns.some((c) => c.key === k));
+      saveTablePrefs(this.id, { order: keys });
+    });
     g.on("rowSelectionChanged", (_d, rows) => this.renderBulk(rows));
     const sync = (row, on) => { const cb = row.getElement().querySelector(".row-check"); if (cb) cb.checked = on; };
     g.on("rowSelected", (row) => sync(row, true));
@@ -598,17 +617,6 @@ export class TableView {
     catch (e) { toastError(e); this.load({ quiet: true }); }
   }
 
-  async saveColumnOrder() {
-    const keys = this.grid.getColumns().map((c) => colKey(c.getField())).filter((k) => k && this.data.columns.some((c) => c.key === k));
-    const missing = this.data.columns.map((c) => c.key).filter((k) => !keys.includes(k));
-    try { await put(`/api/tables/${this.id}/columns/order`, { keys: [...keys, ...missing] }); }
-    catch (e) { toastError(e); }
-  }
-
-  async updateColumnSilently(key, data) {
-    try { await patch(`/api/tables/${this.id}/columns/${encodeURIComponent(key)}`, data); } catch { /* width is cosmetic */ }
-  }
-
   async addRow(afterId) {
     try {
       const item = await post(`/api/tables/${this.id}/items`, { description: "", after_id: afterId });
@@ -642,7 +650,7 @@ export class TableView {
     const item = cell.getRow().getData();
     const wrap = document.createElement("div");
     wrap.className = "thumbs";
-    const max = thumbsShown();
+    const max = this.thumbsShown();
     const shown = item.photos.slice(0, max);
     wrap.innerHTML = shown.map((p, i) => `<img src="${p.thumb}" alt="Photo ${i + 1}" loading="lazy" data-i="${i}">`).join("")
       + (item.photos.length > max ? `<span class="more-n">+${item.photos.length - max}</span>` : "")
@@ -765,32 +773,45 @@ export class TableView {
 // ------------------------------------------------------------ View panel (density / text size)
 
 let openPanel = null;
-function viewPanel(anchor) {
+function viewPanel(anchor, tv) {
   if (openPanel) { openPanel.remove(); openPanel = null; return; }
   const p = document.createElement("div");
   p.className = "view-panel";
   p.setAttribute("role", "dialog");
   p.setAttribute("aria-label", "Table view settings");
+  const sizeLabel = screenSize() === "small" ? "phone layout" : "large screens";
+  const apply = (patch) => { saveTablePrefs(tv.id, patch); tv.applyView(); tv.grid?.redraw(true); };
   const render = () => {
-    const near = (v, presets) => presets.find(([, x]) => x === v)?.[1];
+    const v = tv.view();
     p.innerHTML = `
       <h3>Row height</h3>
-      <div class="seg">${ROW_PRESETS.map(([l, v]) => `<button data-row="${v}" class="${near(gridView.rowH, ROW_PRESETS) === v ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
-      <div class="row small"><input type="range" min="26" max="160" step="2" value="${gridView.rowH}" aria-label="Row height">
-        <span class="mono" style="width:44px;text-align:right">${gridView.rowH}px</span></div>
+      <div class="seg">${ROW_PRESETS.map(([l, x]) => `<button data-row="${x}" class="${v.rowH === x ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
+      <div class="row small"><input type="range" min="26" max="160" step="2" value="${v.rowH}" aria-label="Row height">
+        <span class="mono" style="width:44px;text-align:right">${v.rowH}px</span></div>
       <h3>Text size</h3>
-      <div class="seg">${FONT_PRESETS.map(([l, v]) => `<button data-font="${v}" class="${gridView.font === v ? "on" : ""}">${esc(l)}</button>`).join("")}</div>`;
+      <div class="seg">${FONT_PRESETS.map(([l, x]) => `<button data-font="${x}" class="${v.font === x ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
+      <div class="small muted">${v.custom ? `Custom for this table (${sizeLabel}).` : `Using your default for ${sizeLabel}.`}</div>
+      <div class="row wrap" style="gap:6px">
+        <button class="btn btn-sm" data-act="global" title="Use this row height and text size for every table on ${sizeLabel}">Apply to all tables</button>
+        ${v.custom ? '<button class="btn btn-sm btn-ghost" data-act="reset">Reset to my default</button>' : ""}
+      </div>`;
     p.querySelector("input[type=range]").addEventListener("input", (e) => {
-      setGridView({ rowH: Number(e.target.value) });
-      p.querySelector(".mono").textContent = `${gridView.rowH}px`;
-      p.querySelectorAll("[data-row]").forEach((b) => b.classList.toggle("on", Number(b.dataset.row) === gridView.rowH));
+      apply({ rowH: Number(e.target.value) });
+      p.querySelector(".mono").textContent = `${e.target.value}px`;
+      p.querySelectorAll("[data-row]").forEach((b) => b.classList.toggle("on", b.dataset.row === e.target.value));
     });
   };
-  p.addEventListener("click", (e) => {
+  p.addEventListener("click", async (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    if (b.dataset.row) setGridView({ rowH: Number(b.dataset.row) });
-    if (b.dataset.font) setGridView({ font: Number(b.dataset.font) });
+    if (b.dataset.row) apply({ rowH: Number(b.dataset.row) });
+    if (b.dataset.font) apply({ font: Number(b.dataset.font) });
+    if (b.dataset.act === "reset") apply({ rowH: null, font: null });
+    if (b.dataset.act === "global") {
+      const { rowH, font } = tv.view();
+      try { await setGridDefault({ rowH, font }, true); toast(`Row height and text size applied to all tables (${sizeLabel})`); }
+      catch (err) { toastError(err); }
+    }
     render();
   });
   render();

@@ -256,3 +256,29 @@ def test_deep_links_and_login_return(app, client):
     for bad in ("//evil.example", "/\\evil.example", "https://evil.example"):
         r = app.test_client().post(f"/login?next={bad}", data={"username": "viewer", "password": "password123"})
         assert r.location == "/", bad
+
+
+def test_user_table_view_prefs(client, editor):
+    t = _mk(client, "/api/tables", name="T")
+    tid = str(t["id"])
+    r = editor.patch(f"/api/me/prefs/tables/{tid}?size=large", json={
+        "rowH": 80, "font": 99, "hidden": ["observation"], "widths": {"description": 400},
+        "order": ["quantity", "description"], "showCreated": True, "bogus": 1})
+    assert r.get_json() == {"rowH": 80, "font": 22, "hidden": ["observation"], "widths": {"description": 400},
+                            "order": ["quantity", "description"], "showCreated": True}
+    editor.patch(f"/api/me/prefs/tables/{tid}?size=small", json={"rowH": 28, "hidden": ["photos"]})
+    p = editor.get("/api/me/prefs").get_json()
+    assert p["tables"][tid]["small"] == {"rowH": 28, "hidden": ["photos"]}  # separate small-screen version
+    assert p["tables"][tid]["large"]["rowH"] == 80
+    # Per user: the admin's view and the table definition are untouched
+    assert client.get("/api/me/prefs").get_json() == {}
+    assert not any(c.get("hidden") for c in client.get(f"/api/tables/{tid}").get_json()["columns"])
+    # Default for large screens + "apply everywhere": drops large density overrides only
+    p = editor.put("/api/me/prefs/grid?size=large", json={"rowH": 48, "font": 15, "apply_everywhere": True}).get_json()
+    assert p["grid"] == {"large": {"rowH": 48, "font": 15}}
+    assert "rowH" not in p["tables"][tid]["large"] and p["tables"][tid]["large"]["hidden"] == ["observation"]
+    assert p["tables"][tid]["small"]["rowH"] == 28
+    # None removes settings; empty sizes/tables are dropped
+    editor.patch(f"/api/me/prefs/tables/{tid}?size=large", json={"hidden": None, "widths": None, "order": None, "showCreated": None, "font": None})
+    editor.patch(f"/api/me/prefs/tables/{tid}?size=small", json={"rowH": None, "hidden": None})
+    assert tid not in editor.get("/api/me/prefs").get_json()["tables"]

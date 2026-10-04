@@ -74,4 +74,4 @@ def admin_required(fn):
     return wrapper
 
 
-from . import admin_api, ai_api, io_api, items, nodes, search_api  # noqa: E402,F401
+from . import admin_api, ai_api, io_api, items, me, nodes, search_api  # noqa: E402,F401

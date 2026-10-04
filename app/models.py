@@ -52,6 +52,8 @@ class User(UserMixin, db.Model):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_login: Mapped[datetime | None] = mapped_column(DateTime)
+    # Personal UI preferences, e.g. {"grid": {"rowH": 36, "font": 13}, "tables": {"12": {...}}}
+    prefs: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict)
 
     def set_password(self, pw: str):
         self.password_hash = _ph.hash(pw)
