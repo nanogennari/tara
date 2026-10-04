@@ -299,10 +299,10 @@ export class TableView {
       }
     }
     cols.push({
-      title: "Added", field: "created_at", visible: this.showCreated, width: 170, headerSort: true, responsive: 98,
+      title: "Added", field: "created_at", visible: this.showCreated, width: 200, headerSort: true, responsive: 98,
       formatter: (cell) => {
         const r = cell.getRow().getData();
-        return `<span class="updated-cell" title="Added ${esc(fmtDateTime(r.created_at))}${r.created_by ? " by " + esc(r.created_by) : ""}">${esc(fmtDateTime(r.created_at))}${r.created_by ? "<br>" + esc(r.created_by) : ""}</span>`;
+        return `<span class="updated-cell" title="Added ${esc(fmtDateTime(r.created_at))}${r.created_by ? " by " + esc(r.created_by) : ""}">${esc(fmtDateTime(r.created_at))}${r.created_by ? " · " + esc(r.created_by) : ""}</span>`;
       },
     });
     cols.push({
