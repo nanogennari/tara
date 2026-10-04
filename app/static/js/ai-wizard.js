@@ -1,7 +1,7 @@
 // "Add with AI" wizard: upload photos -> AI proposal -> review (accept / edit / ask AI to change) -> commit.
 import { api, get, icons, post, qtyFormat, resizeImage, toast, toastError } from "./util.js";
 
-const MAX_PHOTOS = 12;
+const MAX_PHOTOS = 20;
 
 export function aiWizardComponent() {
   return {

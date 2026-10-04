@@ -135,7 +135,8 @@ def test_anthropic_request_shape(monkeypatch):
     assert captured["output_config"]["format"]["type"] == "json_schema"
     assert captured["fallbacks"] == "default"
     assert "temperature" not in captured and "tool_choice" not in captured
-    assert captured["messages"][0]["content"][0]["type"] == "image"
+    content = captured["messages"][0]["content"]
+    assert content[0] == {"type": "text", "text": "Photo 0"} and content[1]["type"] == "image"
 
 
 def test_openai_compatible_falls_back_without_json_schema(monkeypatch):
@@ -282,3 +283,13 @@ def test_gemini_retries_transient_errors(monkeypatch):
     import pytest
     with pytest.raises(providers.AIError, match="server error"):
         p.call([], None)
+
+
+def test_photo_order_is_kept_best_first(app):
+    from app.ai.schema import normalise
+    with app.app_context():
+        from app.services import inventory as inv
+        t = inv.create_table("Box")
+        out = normalise({"items": [{"description": "Splendor", "photo_indexes": [9, 4, 9, 2, 7, 1, 30]}]}, t, 10)
+        # model's ranking kept (first = thumbnail), duplicates/out-of-range dropped, capped at 4
+        assert out["items"][0]["photo_indexes"] == [9, 4, 2, 7]

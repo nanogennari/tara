@@ -49,7 +49,8 @@ def build_schema(table) -> dict:
                 "required": list(custom_props),
                 "additionalProperties": False,
             },
-            "photo_indexes": {"type": "array", "items": {"type": "integer"}},
+            "photo_indexes": {"type": "array", "items": {"type": "integer"},
+                              "description": "Photos that clearly show this item, best first (0-based Photo N labels)"},
             "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
         },
         "required": ["description", "quantity", "observation", "custom", "photo_indexes", "confidence"],
@@ -64,6 +65,9 @@ def build_schema(table) -> dict:
         "required": ["items", "notes"],
         "additionalProperties": False,
     }
+
+
+MAX_PHOTOS_PER_ITEM = 4
 
 
 class ProposalError(ValueError):
@@ -104,7 +108,9 @@ def normalise(raw, table, n_photos: int) -> dict:
         raw_idx = r.get("photo_indexes") or []
         if isinstance(raw_idx, (int, float)):
             raw_idx = [raw_idx]
-        idx = sorted({int(i) for i in raw_idx if isinstance(i, (int, float)) and 0 <= int(i) < n_photos})
+        # Keep the model's order (best photo first = thumbnail), drop duplicates/out-of-range, cap noise
+        idx = list(dict.fromkeys(int(i) for i in raw_idx if isinstance(i, (int, float)) and 0 <= int(i) < n_photos))
+        idx = idx[:MAX_PHOTOS_PER_ITEM]
         if not idx and n_photos == 1:
             idx = [0]
         conf = r.get("confidence") if r.get("confidence") in ("high", "medium", "low") else "medium"

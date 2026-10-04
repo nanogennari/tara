@@ -5,7 +5,7 @@
 import { api, get, icons, post, promptDialog, qtyFormat, resizeImage, toast, toastError } from "./util.js";
 import { toApi, toRow } from "./ai-wizard.js";
 
-const MAX_PHOTOS = 12;
+const MAX_PHOTOS = 20;
 
 export function guidedComponent() {
   return {

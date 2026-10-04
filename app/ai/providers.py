@@ -85,8 +85,10 @@ class AnthropicProvider(Provider):
 
     def generate(self, images, system, prompt, schema):
         import anthropic
-        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(img)}}
-                   for img in images]
+        content = []
+        for i, img in enumerate(images):  # explicit labels: the model must not have to count images
+            content.append({"type": "text", "text": f"Photo {i}"})
+            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64(img)}})
         content.append({"type": "text", "text": prompt})
         kwargs = dict(
             model=self.model, max_tokens=self.max_tokens, system=system,
@@ -161,8 +163,10 @@ class OpenAIProvider(Provider):
 
     def generate(self, images, system, prompt, schema):
         import openai
-        content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_b64(img)}"}}
-                   for img in images]
+        content = []
+        for i, img in enumerate(images):
+            content.append({"type": "text", "text": f"Photo {i}"})
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_b64(img)}"}})
         content.append({"type": "text", "text": prompt})
         base = dict(model=self.model, messages=[{"role": "system", "content": system},
                                                 {"role": "user", "content": content}])
@@ -259,7 +263,10 @@ class GoogleProvider(Provider):
 
     def generate(self, images, system, prompt, schema):
         from google.genai import errors, types
-        parts = [types.Part.from_bytes(data=img, mime_type="image/jpeg") for img in images]
+        parts = []
+        for i, img in enumerate(images):
+            parts.append(types.Part.from_text(text=f"Photo {i}"))
+            parts.append(types.Part.from_bytes(data=img, mime_type="image/jpeg"))
         parts.append(types.Part.from_text(text=prompt))
         config = types.GenerateContentConfig(
             system_instruction=system, temperature=self.temperature,

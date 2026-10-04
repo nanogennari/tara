@@ -17,7 +17,7 @@ from .schema import ProposalError, build_schema, normalise
 
 log = logging.getLogger(__name__)
 
-MAX_PHOTOS = 12
+MAX_PHOTOS = 20
 RATE_LIMIT = 5          # calls
 RATE_WINDOW = 60        # seconds
 

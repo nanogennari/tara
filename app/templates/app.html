@@ -367,7 +367,7 @@
           <button class="btn btn-sm" x-show="!!retryFn" @click="tryAgain()"><i data-lucide="rotate-ccw"></i>Try again</button></div>
         <div class="dropzone" :class="dragging && 'hover'" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop($event)">
           <i data-lucide="images"></i>
-          <div><strong>Drop photos of the box contents</strong><br><span class="small">or paste from clipboard · up to 12 photos</span></div>
+          <div><strong>Drop photos of the box contents</strong><br><span class="small">or paste from clipboard · up to 20 photos</span></div>
           <div class="row wrap" style="justify-content:center">
             <label class="btn btn-primary"><i data-lucide="camera"></i>Take photo<input type="file" accept="image/*" capture="environment" class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
             <label class="btn"><i data-lucide="upload"></i>Choose files<input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>

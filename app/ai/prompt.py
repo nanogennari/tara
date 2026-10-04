@@ -10,8 +10,13 @@ contents of one storage container (box, bag, shelf...) and must list every disti
 identify so it can be added to an inventory spreadsheet.
 
 How to work:
-- Look carefully at every photo. The same item may appear in several photos; list it once and \
-reference all photos it appears in via photo_indexes (0-based, in the order given).
+- Look carefully at every photo. Each photo is preceded by a "Photo N" label (N starts at 0). The \
+same item may appear in several photos; list it once.
+- photo_indexes says which photos will be attached to the item in the inventory, so choose them \
+carefully: only photos where this item is clearly shown (a main subject of the photo, or clearly \
+identifiable), BEST PHOTO FIRST — the first one becomes the item's thumbnail. Don't include photos \
+where the item only appears in the background of a photo that is about other items, unless that is \
+the only photo showing it. Usually 1–2 photos per item.
 - Read labels, brands, model numbers, sizes, strengths and expiry dates when they are legible, and \
 put them where the table's columns expect them.
 - Count exactly when you can. When you can't (many small pieces, partially hidden items), give \
@@ -85,7 +90,7 @@ def build_user_prompt(table, user_notes: str = "", n_photos: int = 0, skip_exist
         lines.append("")
 
     lines.append("## Photos")
-    lines.append(f"{n_photos} photo(s) attached, indexed 0 to {max(0, n_photos - 1)} in order.")
+    lines.append(f"{n_photos} photo(s) attached, labeled Photo 0 to Photo {max(0, n_photos - 1)} in the order given.")
     if user_notes.strip():
         lines += ["", "## Notes from the person taking the photos", user_notes.strip()]
     lines += ["", "Return the items as JSON matching the provided schema."]
