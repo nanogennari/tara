@@ -10,6 +10,8 @@ export function aiWizardComponent() {
     tableId: null,
     table: null,
     files: [],       // [{file, url}]
+    maxPhotos: MAX_PHOTOS,
+    limitNotice: "",
     notes: "",
     skipExisting: true,
     dragging: false,
@@ -46,7 +48,7 @@ export function aiWizardComponent() {
     },
     reset() {
       this.files.forEach((f) => URL.revokeObjectURL(f.url));
-      Object.assign(this, { step: "upload", files: [], notes: "", proposal: null, rows: [], versions: [], history: [],
+      Object.assign(this, { step: "upload", files: [], limitNotice: "", notes: "", proposal: null, rows: [], versions: [], history: [],
         instruction: "", rowRefine: { index: null, text: "" }, error: "", table: null });
     },
     async close(force = false) {
@@ -66,12 +68,18 @@ export function aiWizardComponent() {
     // ---------------------------------------------------- photos
     addFiles(list) {
       const imgs = [...list].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
-      const room = MAX_PHOTOS - this.files.length;
-      if (imgs.length > room) toast(`Up to ${MAX_PHOTOS} photos per request`, { error: true });
+      const room = Math.max(0, MAX_PHOTOS - this.files.length);
       imgs.slice(0, room).forEach((file) => this.files.push({ file, url: URL.createObjectURL(file) }));
+      const left = imgs.length - Math.min(imgs.length, room);
+      // Persistent (not a toast): say exactly what was left out and what to do
+      this.limitNotice = left
+        ? `Only ${MAX_PHOTOS} photos fit in one batch — ${left} photo${left > 1 ? "s were" : " was"} not added. ` +
+          "Analyze these first, then add the rest in a new batch."
+        : "";
       this.$nextTick(() => icons(this.$root));
     },
-    removeFile(i) { URL.revokeObjectURL(this.files[i].url); this.files.splice(i, 1); },
+    removeFile(i) { URL.revokeObjectURL(this.files[i].url); this.files.splice(i, 1); this.limitNotice = ""; },
+    get atLimit() { return this.files.length >= MAX_PHOTOS; },
     onDrop(e) { this.dragging = false; this.addFiles(e.dataTransfer.files); },
     onPaste(e) { if (this.open && this.step === "upload" && e.clipboardData?.files?.length) this.addFiles(e.clipboardData.files); },
     preview(i) {

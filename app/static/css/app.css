@@ -311,9 +311,14 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .viewer-top, .viewer-bottom { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }
 .viewer .btn { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.15); color: #eee; }
 .viewer .btn:hover { background: rgba(255,255,255,.16); }
-.viewer-stage { position: relative; overflow: hidden; display: grid; place-items: center; touch-action: none; min-height: 0; padding: 8px 64px; }
-@media (max-width: 600px) { .viewer-stage { padding: 4px; } .viewer-nav { display: none; } }
-.viewer-stage img { width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+.viewer-stage { position: relative; overflow: hidden; touch-action: none; min-height: 0; }
+/* The image box is pinned to the stage (not sized by the photo), so any photo opens scaled to fit */
+.viewer-stage img { position: absolute; inset: 8px 64px; width: calc(100% - 128px); height: calc(100% - 16px);
+  object-fit: contain; user-select: none; -webkit-user-drag: none; }
+@media (max-width: 600px) {
+  .viewer-stage img { inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); }
+  .viewer-nav { display: none; }
+}
 .viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; }
 .viewer-nav.prev { left: 14px; } .viewer-nav.next { right: 14px; }
 .viewer-strip { display: flex; gap: 6px; overflow-x: auto; justify-content: center; flex: 1; }
@@ -348,6 +353,9 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 .dropzone { border: 2px dashed var(--border-strong); border-radius: 12px; padding: 28px 16px; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px; transition: border-color .12s, background .12s; }
 .dropzone.hover { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-text); }
 .dropzone > svg { width: 34px; height: 34px; }
+.photo-count { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.photo-count.full > span:first-child { color: var(--warn); }
+label.btn.disabled, .g-big.disabled { opacity: .5; cursor: not-allowed; pointer-events: none; }
 .previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
 .preview { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
 .preview img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }

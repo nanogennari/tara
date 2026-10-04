@@ -14,6 +14,8 @@ export function guidedComponent() {
     folderId: null,
     table: null,       // full table (columns) once chosen
     files: [],
+    maxPhotos: MAX_PHOTOS,
+    limitNotice: "",
     notes: "",
     proposal: null,
     rows: [],
@@ -100,15 +102,22 @@ export function guidedComponent() {
     // ---------------------------------------------------- capture
     resetCapture() {
       this.files.forEach((f) => URL.revokeObjectURL(f.url));
-      Object.assign(this, { files: [], notes: "", proposal: null, rows: [], instruction: "", error: "" });
+      Object.assign(this, { files: [], notes: "", proposal: null, rows: [], instruction: "", error: "", limitNotice: "" });
     },
     addFiles(list) {
-      const room = MAX_PHOTOS - this.files.length;
-      [...list].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name)).slice(0, room)
-        .forEach((file) => this.files.push({ file, url: URL.createObjectURL(file) }));
+      const imgs = [...list].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
+      const room = Math.max(0, MAX_PHOTOS - this.files.length);
+      imgs.slice(0, room).forEach((file) => this.files.push({ file, url: URL.createObjectURL(file) }));
+      const left = imgs.length - Math.min(imgs.length, room);
+      // Persistent (not a toast): say exactly what was left out and what to do
+      this.limitNotice = left
+        ? `Only ${MAX_PHOTOS} photos fit in one batch — ${left} photo${left > 1 ? "s were" : " was"} not added. ` +
+          "Analyze these first, then add the rest in a new batch."
+        : "";
       this.$nextTick(() => icons(this.$root));
     },
-    removeFile(i) { URL.revokeObjectURL(this.files[i].url); this.files.splice(i, 1); },
+    removeFile(i) { URL.revokeObjectURL(this.files[i].url); this.files.splice(i, 1); this.limitNotice = ""; },
+    get atLimit() { return this.files.length >= MAX_PHOTOS; },
 
     startTimer(label) {
       this.workingLabel = label;

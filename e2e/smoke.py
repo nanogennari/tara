@@ -138,7 +138,23 @@ with sync_playwright() as p:
     page.wait_for_timeout(800)
     expect(q).to_contain_text("~88 tabs")
 
-    # ---- photo viewer
+    # ---- photo viewer (a big photo must open scaled to fit the screen)
+    first_id = page.locator(".view:not([hidden]) .tabulator-row").first.get_attribute("data-id")
+    csrf = page.get_attribute('meta[name="csrf-token"]', "content")
+    page.request.post(f"{BASE}/api/items/{first_id}/photos", headers={"X-CSRFToken": csrf}, multipart={
+        "files": {"name": "big.jpg", "mimeType": "image/jpeg", "buffer": Path(".devdata/big_photo.jpg").read_bytes()}})
+    page.reload()
+    page.wait_for_selector(".view:not([hidden]) .tabulator-row")
+    page.locator(".view:not([hidden]) .tabulator-row").first.locator(".thumbs img").last.click()
+    page.wait_for_selector(".viewer-stage img")
+    page.wait_for_timeout(500)
+    fit = page.evaluate("""() => { const i = document.querySelector('.viewer-stage img'), s = document.querySelector('.viewer-stage');
+        const a = i.getBoundingClientRect(), b = s.getBoundingClientRect();
+        return a.top >= b.top - 1 && a.bottom <= b.bottom + 1 && a.left >= b.left - 1 && a.right <= b.right + 1; }""")
+    if not fit:
+        errors.append("viewer: big photo does not open scaled to fit")
+    shot(page, "05a-viewer-big-photo")
+    page.keyboard.press("Escape")
     page.locator(".thumbs img").first.click()
     page.wait_for_selector(".viewer-stage img")
     page.click('[aria-label="Zoom in"]')
@@ -182,8 +198,19 @@ with sync_playwright() as p:
     check_icons("AI wizard")
     shot(page, "09-ai-wizard")
     # No AI provider is configured in the smoke test, so analysis fails: "Try again" must be offered
-    sample_photo = next(p for p in Path(".devdata/uploads").rglob("*.jpg") if p.name.count(".") == 1)
-    page.set_input_files('.dropzone input[multiple]', str(sample_photo))
+    # Photo limit is visible: counter, persistent notice, disabled pickers
+    many = [str(p) for p in sorted(Path(".devdata/uploads").rglob("*.jpg")) if p.name.count(".") == 1][:22]
+    wiz = page.locator('[x-data="aiWizard"]')
+    wiz.locator('.dropzone input[multiple]').set_input_files(many)
+    count_text = wiz.locator(".photo-count").inner_text()
+    notice = wiz.locator(".alert-warn").inner_text()
+    if "20 / 20" not in count_text or f"{len(many) - 20} photos were not added" not in notice:
+        errors.append(f"limit: unclear photo limit ({count_text!r} / {notice!r})")
+    if not wiz.locator('.dropzone input[multiple]').is_disabled():
+        errors.append("limit: photo picker still enabled at the limit")
+    shot(page, "09a-ai-wizard-limit")
+    while wiz.locator(".preview").count() > 1:
+        wiz.locator(".preview .rm").first.click()
     page.click("text=Analyze photos")
     page.wait_for_selector('[x-data="aiWizard"] .alert-retry button:has-text("Try again")')
     page.click('[x-data="aiWizard"] .alert-retry button:has-text("Try again")')

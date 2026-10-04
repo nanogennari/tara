@@ -156,10 +156,15 @@
           <button class="btn btn-sm" @click="changeTable()"><i data-lucide="arrow-left-right"></i>Change</button>
         </div>
         <div class="g-capture">
-          <label class="g-big btn-ai"><i data-lucide="camera"></i><span>Take photo</span>
-            <input type="file" accept="image/*" capture="environment" class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
-          <label class="g-big"><i data-lucide="images"></i><span>Choose photos</span>
-            <input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
+          <label class="g-big btn-ai" :class="atLimit && 'disabled'"><i data-lucide="camera"></i><span x-text="atLimit ? 'Limit reached' : 'Take photo'"></span>
+            <input type="file" accept="image/*" capture="environment" class="sr-only" :disabled="atLimit" @change="addFiles($event.target.files); $event.target.value=''"></label>
+          <label class="g-big" :class="atLimit && 'disabled'"><i data-lucide="images"></i><span x-text="`Choose photos (up to ${maxPhotos})`"></span>
+            <input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" :disabled="atLimit" @change="addFiles($event.target.files); $event.target.value=''"></label>
+        </div>
+        <div class="alert alert-warn" x-show="limitNotice" x-text="limitNotice" role="status"></div>
+        <div class="photo-count" x-show="files.length" :class="atLimit && 'full'">
+          <span x-text="`${files.length} / ${maxPhotos} photos`"></span>
+          <span class="muted" x-show="atLimit">· limit reached — remove one to add another</span>
         </div>
         <div class="previews" x-show="files.length">
           <template x-for="(f, i) in files" :key="f.url">
@@ -367,11 +372,16 @@
           <button class="btn btn-sm" x-show="!!retryFn" @click="tryAgain()"><i data-lucide="rotate-ccw"></i>Try again</button></div>
         <div class="dropzone" :class="dragging && 'hover'" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop($event)">
           <i data-lucide="images"></i>
-          <div><strong>Drop photos of the box contents</strong><br><span class="small">or paste from clipboard · up to 20 photos</span></div>
+          <div><strong>Drop photos of the box contents</strong><br><span class="small" x-text="`or paste from clipboard · up to ${maxPhotos} photos per batch`"></span></div>
           <div class="row wrap" style="justify-content:center">
-            <label class="btn btn-primary"><i data-lucide="camera"></i>Take photo<input type="file" accept="image/*" capture="environment" class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
-            <label class="btn"><i data-lucide="upload"></i>Choose files<input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" @change="addFiles($event.target.files); $event.target.value=''"></label>
+            <label class="btn btn-primary" :class="atLimit && 'disabled'"><i data-lucide="camera"></i>Take photo<input type="file" accept="image/*" capture="environment" class="sr-only" :disabled="atLimit" @change="addFiles($event.target.files); $event.target.value=''"></label>
+            <label class="btn" :class="atLimit && 'disabled'"><i data-lucide="upload"></i>Choose files<input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" :disabled="atLimit" @change="addFiles($event.target.files); $event.target.value=''"></label>
           </div>
+        </div>
+        <div class="alert alert-warn" x-show="limitNotice" x-text="limitNotice" role="status"></div>
+        <div class="photo-count" x-show="files.length" :class="atLimit && 'full'">
+          <span x-text="`${files.length} / ${maxPhotos} photos`"></span>
+          <span class="muted" x-show="atLimit">· limit reached — remove one to add another</span>
         </div>
         <div class="previews" x-show="files.length">
           <template x-for="(f, i) in files" :key="f.url">
@@ -475,7 +485,7 @@
       <div class="modal-foot">
         <template x-if="step === 'upload'">
           <div class="row" style="width:100%">
-            <span class="small muted grow" x-text="files.length ? files.length + ' photo(s) ready' : 'Add at least one photo'"></span>
+            <span class="small muted grow" x-text="files.length ? `${files.length} of ${maxPhotos} photos` : 'Add at least one photo'"></span>
             <button class="btn" @click="close()">Cancel</button>
             <button class="btn btn-ai" :disabled="!files.length" @click="analyze()"><i data-lucide="sparkles"></i>Analyze photos</button>
           </div>
