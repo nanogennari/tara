@@ -250,3 +250,10 @@ def test_usage_is_recorded_per_user(client, editor, monkeypatch):
     assert by["editor"]["calls"] == 2 and by["editor"]["input"] == 2000 and by["editor"]["output"] == 400
     assert by["admin"]["calls"] == 1
     assert u["per_kind"][0]["kind"] == "propose" and u["recent"][0]["model"] == "fake:fake-1"
+
+
+def test_google_client_is_kept_alive():
+    # google-genai closes its HTTP client when the Client is garbage-collected;
+    # a throwaway client per call made every request fail with "client has been closed".
+    p = providers.GoogleProvider({"api_key": "k", "model": "gemini-2.5-flash"})
+    assert p._client() is p._client()

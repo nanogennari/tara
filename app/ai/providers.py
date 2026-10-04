@@ -247,10 +247,14 @@ class GoogleProvider(Provider):
     name = "google"
 
     def _client(self):
-        from google import genai
-        if not self.conf.get("api_key"):
-            raise AIError("No Google API key configured")
-        return genai.Client(api_key=self.conf["api_key"])
+        # Keep one client per provider: google-genai closes its HTTP connection when the
+        # Client object is garbage-collected, so a temporary client breaks the request.
+        if getattr(self, "_genai", None) is None:
+            from google import genai
+            if not self.conf.get("api_key"):
+                raise AIError("No Google API key configured")
+            self._genai = genai.Client(api_key=self.conf["api_key"])
+        return self._genai
 
     def generate(self, images, system, prompt, schema):
         from google.genai import errors, types
@@ -260,6 +264,7 @@ class GoogleProvider(Provider):
             system_instruction=system, temperature=self.temperature,
             max_output_tokens=self.max_tokens, response_mime_type="application/json",
             response_json_schema=schema,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         resp = self.call(contents=parts, config=config)
         if getattr(resp, "parsed", None):
@@ -282,7 +287,8 @@ class GoogleProvider(Provider):
     def list_models(self):
         from google.genai import errors
         try:
-            return sorted(m.name.removeprefix("models/") for m in self._client().models.list())
+            client = self._client()
+            return sorted(m.name.removeprefix("models/") for m in client.models.list())
         except errors.APIError as e:
             raise AIError(f"Gemini error: {getattr(e, 'message', e)}") from e
 
