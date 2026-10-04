@@ -149,7 +149,9 @@
       </section>
 
       <!-- capture -->
-      <section x-show="step === 'capture'" class="stack">
+      <section x-show="step === 'capture'" class="stack drop-area" :class="dragging && 'hover'"
+               @dragover.prevent="dragging = true" @dragleave.self="dragging = false"
+               @drop.prevent="dragging = false; addFiles($event.dataTransfer.files)">
         <div class="g-target">
           <i data-lucide="package"></i>
           <div class="grow" style="min-width:0"><div class="small muted truncate" x-text="table?.path.join(' / ') || 'Top level'"></div><strong class="truncate" x-text="table?.name"></strong></div>
@@ -188,7 +190,9 @@
       </section>
 
       <!-- manual entry -->
-      <section x-show="step === 'manual'" class="stack">
+      <section x-show="step === 'manual'" class="stack drop-area" :class="dragging && 'hover'"
+               @dragover.prevent="dragging = true" @dragleave.self="dragging = false"
+               @drop.prevent="dragging = false; manual && addManualFiles($event.dataTransfer.files)">
         <h2>Type an item into <span x-text="table?.name"></span></h2>
         <template x-if="manual">
           <form class="form-stack" @submit.prevent="saveManual(true)">
@@ -367,10 +371,10 @@
       </div>
 
       <!-- step: upload -->
-      <div class="modal-body" x-show="step === 'upload'">
+      <div class="modal-body" x-show="step === 'upload'" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="onDrop($event)">
         <div class="alert alert-error alert-retry" x-show="error" role="alert"><span class="grow" x-text="error"></span>
           <button class="btn btn-sm" x-show="!!retryFn" @click="tryAgain()"><i data-lucide="rotate-ccw"></i>Try again</button></div>
-        <div class="dropzone" :class="dragging && 'hover'" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop($event)">
+        <div class="dropzone" :class="dragging && 'hover'">
           <i data-lucide="images"></i>
           <div><strong>Drop photos of the box contents</strong><br><span class="small" x-text="`or paste from clipboard · up to ${maxPhotos} photos per batch`"></span></div>
           <div class="row wrap" style="justify-content:center">
@@ -508,7 +512,13 @@
         <button class="btn btn-ghost btn-icon" @click="open = false" aria-label="Close"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
         <p class="muted">Each sheet becomes a table in <strong x-text="folderName"></strong>. Embedded photos are attached to the row they sit on.</p>
-        <input type="file" accept=".xlsx,.xlsm" @change="choose($event)">
+        <label class="dropzone" :class="dragging && 'hover'" style="cursor:pointer"
+               @dragover.prevent="dragging = true" @dragleave.self="dragging = false"
+               @drop.prevent="dragging = false; useFile($event.dataTransfer.files[0])">
+          <i data-lucide="file-spreadsheet"></i>
+          <span><strong x-text="file ? file.name : 'Drop an .xlsx file here'"></strong><br><span class="small">or click to choose one</span></span>
+          <input type="file" accept=".xlsx,.xlsm" class="sr-only" @change="useFile($event.target.files[0]); $event.target.value=''">
+        </label>
         <div class="alert alert-error" x-show="error" x-text="error"></div>
         <div x-show="busy" class="row"><span class="spinner"></span> Reading…</div>
         <div class="list" x-show="sheets.length"><table><tbody>

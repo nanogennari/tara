@@ -9,6 +9,7 @@ export function importComponent() {
     sheets: [],
     picked: [],
     busy: false,
+    dragging: false,
     error: "",
     get s() { return Alpine.store("app"); },
     get folderName() { return this.folderId ? (this.s.folder(this.folderId)?.name || "folder") : "Top level"; },
@@ -19,9 +20,10 @@ export function importComponent() {
         this.$nextTick(() => icons(this.$root));
       });
     },
-    async choose(e) {
-      this.file = e.target.files[0];
-      if (!this.file) return;
+    async useFile(file) {
+      if (!file) return;
+      if (!/\.xls[xm]$/i.test(file.name)) { this.error = "Only .xlsx spreadsheets can be imported."; return; }
+      this.file = file;
       this.busy = true;
       this.error = "";
       const fd = new FormData();

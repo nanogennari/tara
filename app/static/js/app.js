@@ -317,6 +317,9 @@ document.addEventListener("alpine:init", () => {
       this.$watch("s.tabs", () => this.$nextTick(() => icons(document.querySelector(".tabs"))));
       icons();
       document.addEventListener("keydown", (e) => this.onKey(e));
+      for (const type of ["dragover", "drop"]) {
+        window.addEventListener(type, (e) => { if ([...(e.dataTransfer?.types || [])].includes("Files")) e.preventDefault(); });
+      }
     },
     onKey(e) {
       const mod = e.ctrlKey || e.metaKey;

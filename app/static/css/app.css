@@ -352,7 +352,10 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border-s
 /* ---------------- AI wizard */
 .dropzone { border: 2px dashed var(--border-strong); border-radius: 12px; padding: 28px 16px; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px; transition: border-color .12s, background .12s; }
 .dropzone.hover { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-text); }
+.drop-area { border-radius: 14px; outline: 2px dashed transparent; outline-offset: 6px; transition: outline-color .12s; }
+.drop-area.hover { outline-color: var(--primary); }
 .dropzone > svg { width: 34px; height: 34px; }
+label.dropzone { flex-direction: column; font-weight: 400; }
 .photo-count { font-size: 13px; font-weight: 600; color: var(--text-2); }
 .photo-count.full > span:first-child { color: var(--warn); }
 label.btn.disabled, .g-big.disabled { opacity: .5; cursor: not-allowed; pointer-events: none; }

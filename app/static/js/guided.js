@@ -14,6 +14,7 @@ export function guidedComponent() {
     folderId: null,
     table: null,       // full table (columns) once chosen
     files: [],
+    dragging: false,
     maxPhotos: MAX_PHOTOS,
     limitNotice: "",
     notes: "",
@@ -222,6 +223,7 @@ export function guidedComponent() {
       this.$nextTick(() => this.$root.querySelector("[data-manual-desc]")?.focus());
     },
     addManualFiles(list) {
+      if (!this.manual) return;
       [...list].filter((f) => f.type.startsWith("image/")).forEach((file) => this.manual.files.push({ file, url: URL.createObjectURL(file) }));
     },
     async saveManual(again = true) {
