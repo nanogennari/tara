@@ -160,8 +160,15 @@
             <input x-model="cur.base_url" :placeholder="ai.provider === 'ollama' ? 'http://host:11434' : 'Leave empty for the default endpoint'">
           </label>
           <label>Model
-            <input x-model="cur.model" list="model-list" placeholder="Model id">
-            <datalist id="model-list"><template x-for="m in modelOptions()"><option :value="m"></option></template></datalist>
+            <select x-show="!customModel" @change="pickModel($event.target.value)">
+              <template x-for="m in modelOptions()" :key="m"><option :value="m" x-text="m" :selected="m === cur.model"></option></template>
+              <option value="__custom__">Other (type a model id)…</option>
+            </select>
+            <div class="row" x-show="customModel" style="gap:6px">
+              <input x-model="cur.model" placeholder="Model id" class="grow">
+              <button type="button" class="btn btn-sm" @click="customModel = false" title="Pick from the list">List</button>
+            </div>
+            <span class="hint" x-text="modelHint()"></span>
           </label>
           <label x-show="ai.provider === 'anthropic'">Effort <span class="hint">higher = more careful counting, slower</span>
             <select x-model="cur.effort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>
@@ -245,13 +252,19 @@
         <p class="hint">Every item, table and folder gets an embedding when it's created or edited, so search finds things by meaning (“painkiller” → Advil) and across languages. Fuzzy text matching always works, even with embeddings off.</p>
         <div class="form-grid">
           <label>Embedding provider
-            <select x-model="values['search.provider']" @change="values['search.model'] = embedModels()[0] || ''">
+            <select x-model="values['search.provider']" @change="customEmbed = false; values['search.model'] = embedModels()[0] || ''">
               <template x-for="(m, k) in embedProviders"><option :value="k" x-text="m.label" :selected="values['search.provider'] === k"></option></template>
             </select>
           </label>
           <label x-show="values['search.provider'] !== 'off'">Model
-            <input x-model="values['search.model']" list="embed-models">
-            <datalist id="embed-models"><template x-for="m in embedModels()"><option :value="m"></option></template></datalist>
+            <select x-show="!customEmbed" @change="$event.target.value === '__custom__' ? (customEmbed = true, values['search.model'] = '') : values['search.model'] = $event.target.value">
+              <template x-for="m in [...new Set([values['search.model'], ...embedModels()].filter(Boolean))]" :key="m"><option :value="m" x-text="m" :selected="m === values['search.model']"></option></template>
+              <option value="__custom__">Other (type a model id)…</option>
+            </select>
+            <div class="row" x-show="customEmbed" style="gap:6px">
+              <input x-model="values['search.model']" placeholder="Model id" class="grow">
+              <button type="button" class="btn btn-sm" @click="customEmbed = false">List</button>
+            </div>
           </label>
           <label x-show="values['search.provider'] !== 'off'">Minimum similarity <span class="hint">lower = more (looser) results</span>
             <input type="number" step="0.05" min="0" max="0.95" x-model.number="values['search.min_similarity']">

@@ -19,6 +19,8 @@ document.addEventListener("alpine:init", () => {
     statusTimer: null,
     testResult: {},
     models: {},
+    customModel: false,
+    customEmbed: false,
     busy: "",
     newUser: { username: "", display_name: "", email: "", role: "editor", password: "" },
     invites: [],
@@ -34,6 +36,7 @@ document.addEventListener("alpine:init", () => {
 
     async init() {
       await this.loadSettings();
+      this.$watch("ai.provider", () => { this.customModel = false; });
       this.$watch("tab", (t) => { location.hash = t; this.onTab(); this.$nextTick(() => icons()); });
       window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && t !== this.tab) this.tab = t; });
       this.onTab();
@@ -148,14 +151,27 @@ document.addEventListener("alpine:init", () => {
       this.busy = "models";
       try {
         const r = await post("/api/admin/ai/models", { provider: this.ai.provider, conf: this.cur });
-        this.models[this.ai.provider] = r.models;
+        this.models = { ...this.models, [this.ai.provider]: r.models };
+        this.customModel = false;
         toast(`${r.models.length} models found`);
       } catch (e) { toastError(e); }
       finally { this.busy = ""; }
     },
     modelOptions() {
-      const live = this.models[this.ai.provider] || [];
-      return [...new Set([...live, ...(this.curMeta.models || [])])];
+      const live = this.models[this.ai.provider];
+      // Once the server's list is loaded, show exactly that (plus the saved model); before, the suggestions
+      const base = live?.length ? live : (this.curMeta.models || []);
+      return [...new Set([this.cur.model, ...base].filter(Boolean))];
+    },
+    pickModel(v) {
+      if (v === "__custom__") { this.customModel = true; this.cur.model = ""; return; }
+      this.cur.model = v;
+    },
+    modelHint() {
+      const live = this.models[this.ai.provider];
+      if (!live) return "Suggested models — use “Load available models” to list what your server/account offers.";
+      if (this.cur.model && !live.includes(this.cur.model)) return `“${this.cur.model}” is not in the ${live.length} models the server reported.`;
+      return `${live.length} models available on the server.`;
     },
     async saveAI() {
       this.values["ai.provider"] = this.ai.provider;
