@@ -1,4 +1,5 @@
 """Import / export endpoints."""
+import json
 import re
 
 from flask import Response, jsonify, request
@@ -38,7 +39,13 @@ def import_run():
     folder_id = int(folder_id) if folder_id not in (None, "", "0", "null") else None
     sheets = request.form.getlist("sheets") or None
     try:
-        res = xlsx_import.run(data, folder_id, sheets)
+        mappings = json.loads(request.form.get("mappings") or "{}")
+        if not isinstance(mappings, dict):
+            raise ValueError
+    except ValueError:
+        return jsonify(error="Invalid column mapping"), 400
+    try:
+        res = xlsx_import.run(data, folder_id, sheets, mappings)
     except xlsx_import.ImportError_ as e:
         db.session.rollback()
         return jsonify(error=str(e)), 400

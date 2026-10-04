@@ -2,7 +2,7 @@
 
 Two steps so the user can review what will happen:
   analyze(file) -> per-sheet summary (detected name, columns and their mapping, rows, images)
-  run(file, folder_id, sheets) -> creates the tables
+  run(file, folder_id, sheets, mappings) -> creates the tables (mappings: the user's column overrides)
 """
 import io
 import re
@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 
 from .. import quantity
 from ..extensions import db
-from ..models import InvTable, Item, Photo, default_columns, slugify_key
+from ..models import CUSTOM_TYPES, InvTable, Item, Photo, default_columns, slugify_key
 from . import photos as photo_svc
 from .inventory import coerce_custom, get_folder
 from .tracking import current_user_id
@@ -141,12 +141,14 @@ def _sheet_plan(ws) -> dict:
             continue
         nh = _norm(h)
         target = next((b for b, aliases in BUILTIN_ALIASES.items() if nh in aliases and b not in used_builtins), None)
+        values = [r[ci] if ci < len(r) else None for r in data_rows]
+        # Type is inferred for every column so the user can remap a built-in one to a custom column
+        ctype, options = _infer_type(values)
+        sample = next((str(v) for v in values if v not in (None, "")), "")[:60]
         if target:
             used_builtins.add(target)
-            columns.append({"index": ci, "header": str(h), "maps_to": target})
-        else:
-            ctype, options = _infer_type([r[ci] if ci < len(r) else None for r in data_rows])
-            columns.append({"index": ci, "header": str(h), "maps_to": "custom", "type": ctype, "options": options})
+        columns.append({"index": ci, "header": str(h), "maps_to": target or "custom", "type": ctype,
+                        "options": options, "sample": sample})
 
     # A link index (like a table of contents) is not inventory
     is_index = hyperlinks >= 2 and hyperlinks >= len(data_rows) * 0.5
@@ -162,7 +164,38 @@ def analyze(data: bytes) -> list[dict]:
     return [_sheet_plan(ws) for ws in wb.worksheets]
 
 
-def run(data: bytes, folder_id: int | None, sheets: list[str] | None = None) -> dict:
+MAP_TARGETS = (*BUILTIN_ALIASES, "custom", "skip")
+
+
+def _apply_mapping(plan: dict, rows, mapping: list[dict]):
+    """Override the detected column mapping with the user's choices (by column index)."""
+    by_index = {c["index"]: c for c in plan["columns"]}
+    for m in mapping or []:
+        c = by_index.get(m.get("index")) if isinstance(m, dict) else None
+        if c is None:
+            continue
+        target = m.get("maps_to")
+        if target not in MAP_TARGETS:
+            raise ImportError_(f"Sheet “{plan['sheet']}”: unknown target for column “{c['header']}”")
+        c["maps_to"] = target
+        ctype = m.get("type") or c["type"]
+        if target == "custom" and ctype != c["type"]:
+            if ctype not in CUSTOM_TYPES:
+                raise ImportError_(f"Sheet “{plan['sheet']}”: unknown type for column “{c['header']}”")
+            c["type"] = ctype
+            if ctype == "select":
+                vals = [r[c["index"]] for r in rows[plan["header_row"]:] if c["index"] < len(r)]
+                c["options"] = list(dict.fromkeys(str(v)[:80] for v in vals if v not in (None, "")))[:100]
+    seen = set()
+    for c in plan["columns"]:
+        if c["maps_to"] in BUILTIN_ALIASES:
+            if c["maps_to"] in seen:
+                raise ImportError_(f"Sheet “{plan['sheet']}”: more than one column is mapped to {c['maps_to']}")
+            seen.add(c["maps_to"])
+
+
+def run(data: bytes, folder_id: int | None, sheets: list[str] | None = None,
+        mappings: dict[str, list[dict]] | None = None) -> dict:
     if folder_id is not None:
         get_folder(folder_id)
     wb = _load(data)
@@ -182,9 +215,11 @@ def run(data: bytes, folder_id: int | None, sheets: list[str] | None = None) -> 
             continue
         rows = _rows(ws)
         header_idx = plan["header_row"] - 1
+        if mappings and ws.title in mappings:
+            _apply_mapping(plan, rows, mappings[ws.title])
 
         cols = default_columns()
-        builtin_label = {c["maps_to"]: c["header"] for c in plan["columns"] if c["maps_to"] != "custom"}
+        builtin_label = {c["maps_to"]: c["header"] for c in plan["columns"] if c["maps_to"] in BUILTIN_ALIASES}
         for c in cols:
             if c["key"] in builtin_label:
                 c["label"] = builtin_label[c["key"]][:60]
@@ -203,7 +238,7 @@ def run(data: bytes, folder_id: int | None, sheets: list[str] | None = None) -> 
             cols.insert(insert_at, col)
             insert_at += 1
             custom_map[c["index"]] = col
-        idx_of = {c["maps_to"]: c["index"] for c in plan["columns"] if c["maps_to"] != "custom"}
+        idx_of = {c["maps_to"]: c["index"] for c in plan["columns"] if c["maps_to"] in BUILTIN_ALIASES}
 
         t = InvTable(name=plan["name"], folder_id=folder_id, summary=plan["summary"], context=plan["context"],
                      columns=cols, position=pos, updated_by=uid, content_updated_by=uid)

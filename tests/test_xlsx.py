@@ -19,7 +19,7 @@ def test_analyze_detects_sheets(client):
     assert med["name"] == "Box 01: Medicine Box"
     assert med["summary"] == "Assorted medicine and Band-Aids"
     maps = {c["header"]: (c["maps_to"], c.get("type")) for c in med["columns"]}
-    assert maps["Item"] == ("description", None)
+    assert maps["Item"][0] == "description"
     assert maps["Expiry"] == ("custom", "date")
     assert maps["Bag"] == ("custom", "select")
 
@@ -49,6 +49,26 @@ def test_import_sample_inventory(client):
     zome = next(t for t in tree["tables"] if t["name"].startswith("Box 04"))
     first = client.get(f"/api/tables/{zome['id']}").get_json()["items"][0]
     assert first["quantity"] == {"type": "count", "value": 75.0, "unit": "", "text": "", "estimated": True}
+
+
+def test_import_with_custom_mapping(client):
+    import json
+    med = next(s for s in _upload(client, "/api/import/xlsx/analyze").get_json() if s["sheet"] == "Box 01 Medicine Box")
+    idx = {c["header"]: c["index"] for c in med["columns"]}
+    sheet = "Box 01 Medicine Box"
+
+    clash = {sheet: [{"index": idx["Expiry"], "maps_to": "description"}]}
+    r = _upload(client, "/api/import/xlsx", sheets=sheet, mappings=json.dumps(clash))
+    assert r.status_code == 400 and "more than one column" in r.get_json()["error"]
+
+    remap = {sheet: [{"index": idx["Bag"], "maps_to": "skip"},
+                     {"index": idx["Expiry"], "maps_to": "custom", "type": "text"}]}
+    r = _upload(client, "/api/import/xlsx", sheets=sheet, mappings=json.dumps(remap))
+    assert r.status_code == 201, r.get_json()
+    data = client.get(f"/api/tables/{r.get_json()['tables'][0]['id']}").get_json()
+    cols = {c["key"]: c for c in data["columns"]}
+    assert "bag" not in cols and cols["expiry"]["type"] == "text"
+    assert data["items"][0]["custom"] == {"expiry": "2026-04-30"}
 
 
 def test_export_roundtrip(client):

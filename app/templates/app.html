@@ -575,6 +575,24 @@
                 <strong x-text="sh.name || sh.sheet"></strong>
                 <span class="small muted" x-text="` · ${sh.rows} rows · ${sh.images} photos`"></span>
                 <div class="small muted" x-text="sh.reason || mapping(sh)"></div>
+                <button type="button" class="btn btn-ghost btn-sm" x-show="sh.columns?.length" @click="toggleMapping(sh)">
+                  <i data-lucide="arrow-right-left"></i><span x-text="sh.editing ? 'Hide column mapping' : 'Edit column mapping'"></span></button>
+                <table class="import-map" x-show="sh.editing">
+                  <thead><tr><th>Spreadsheet column</th><th>Import as</th><th>Type</th></tr></thead>
+                  <tbody>
+                    <template x-for="c in sh.columns" :key="c.index">
+                      <tr :class="c.maps_to === 'skip' && 'off'">
+                        <td><strong x-text="c.header"></strong><div class="small muted truncate" x-show="c.sample" x-text="'e.g. ' + c.sample"></div></td>
+                        <td><select :value="c.maps_to" @change="setTarget(sh, c, $event.target.value)" :aria-label="'Import ' + c.header + ' as'">
+                          <template x-for="(label, key) in targets" :key="key"><option :value="key" x-text="label" :selected="key === c.maps_to"></option></template>
+                        </select></td>
+                        <td><select x-show="c.maps_to === 'custom'" x-model="c.type" :aria-label="'Type of ' + c.header">
+                          <template x-for="(label, key) in types" :key="key"><option :value="key" x-text="label" :selected="key === c.type"></option></template>
+                        </select></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
               </td>
             </tr>
           </template>

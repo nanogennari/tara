@@ -398,6 +398,11 @@ label.btn.disabled, .g-big.disabled { opacity: .5; cursor: not-allowed; pointer-
 .refine-bar { display: flex; gap: 8px; align-items: flex-start; }
 .refine-bar textarea { min-height: 38px; height: 38px; }
 .row-refine { display: flex; gap: 6px; margin-top: 6px; }
+.import-map { width: 100%; margin-top: 6px; font-size: 13px; }
+.import-map th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; }
+.import-map td { padding: 3px 6px 3px 0; vertical-align: top; max-width: 220px; }
+.import-map tr.off td:first-child { opacity: .5; text-decoration: line-through; }
+.import-map select { min-height: 30px; }
 .ai-newcols { border: 1px dashed var(--primary); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
 .ai-newcols label.chip { margin: 0; }
 .ai-notes { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; gap: 8px; }
