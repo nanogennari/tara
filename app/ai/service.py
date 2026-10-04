@@ -13,7 +13,7 @@ from ..services.tracking import current_user_id
 from . import prompt as prompt_mod
 from . import usage
 from .providers import AIBadOutput, AIError, get_provider
-from .schema import ProposalError, build_schema, normalise
+from .schema import ProposalError, build_schema, clean_new_columns, normalise
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +54,8 @@ def _generate(provider, images, system, user_prompt, schema, table, kind="propos
 def propose(table, files, notes: str = "", skip_existing: bool = True) -> dict:
     inv.ensure_table_writable(table)
     files = [f for f in files if f]
-    if not files:
-        raise AIError("Add at least one photo")
+    if not files and not (notes or "").strip():
+        raise AIError("Add a photo or describe the items to add")
     if len(files) > MAX_PHOTOS:
         raise AIError(f"At most {MAX_PHOTOS} photos per request")
     uid = current_user_id()
@@ -76,6 +76,8 @@ def propose(table, files, notes: str = "", skip_existing: bool = True) -> dict:
     result = _generate(provider, images, system, user_prompt, schema, table)
     log.info("AI proposal: %d items from %d photos in %.1fs (%s)", len(result["items"]), len(images),
              time.time() - started, provider.model)
+    if not pending and not result["items"]:
+        raise AIError("The AI couldn't make out any items from that description. Try rephrasing.")
 
     from ..search.query import similar_items
     dupes = similar_items([i["description"] for i in result["items"]], exclude_table=table.id)
@@ -86,6 +88,7 @@ def propose(table, files, notes: str = "", skip_existing: bool = True) -> dict:
         "photos": [p.to_dict() for p in pending],
         "items": result["items"],
         "notes": result["notes"],
+        "new_columns": result["new_columns"],
         "model": f"{provider.name}:{provider.model}",
     }
 
@@ -100,12 +103,13 @@ def _pending_photos(photo_ids: list[int]) -> list[Photo]:
 
 
 def _draft_for_prompt(rows: list[dict]) -> list[dict]:
-    keep = ("description", "quantity", "observation", "custom", "photo_indexes", "confidence")
+    keep = ("description", "quantity", "observation", "custom", "photo_indexes", "confidence", "new_values")
     return [{k: r.get(k) for k in keep} for r in rows]
 
 
 def refine(table, photo_ids: list[int], rows: list[dict], instruction: str,
-           row_index: int | None = None, history: list[str] | None = None, notes: str = "") -> dict:
+           row_index: int | None = None, history: list[str] | None = None, notes: str = "",
+           new_columns: list[dict] | None = None) -> dict:
     """Revise a draft (or one row of it) according to a natural-language instruction."""
     inv.ensure_table_writable(table)
     instruction = (instruction or "").strip()
@@ -124,6 +128,10 @@ def refine(table, photo_ids: list[int], rows: list[dict], instruction: str,
     draft = _draft_for_prompt(rows)
     for i, r in enumerate(draft):
         parts.append(f"[{i}] " + json.dumps(r, ensure_ascii=False, default=str))
+    new_columns = clean_new_columns(new_columns, table)
+    if new_columns:
+        parts += ["", "## New columns already suggested (not created yet; keep them unless asked to change them)"]
+        parts += [json.dumps(c, ensure_ascii=False) for c in new_columns]
     if history:
         parts += ["", "## Earlier change requests (already applied)"] + [f"- {h}" for h in history[-10:]]
     parts.append("")
@@ -143,16 +151,31 @@ def refine(table, photo_ids: list[int], rows: list[dict], instruction: str,
         if not new_rows:
             raise AIError("The AI returned no replacement for that row. Try rephrasing.")
         new_rows = rows[:row_index] + new_rows + rows[row_index + 1:]
+        # A single-row change keeps the suggested columns, plus any the AI added for this row
+        labels = {c["label"].casefold() for c in new_columns}
+        result["new_columns"] = new_columns + [c for c in result["new_columns"] if c["label"].casefold() not in labels]
 
     from ..search.query import similar_items
     for item, d in zip(new_rows, similar_items([i["description"] for i in new_rows], exclude_table=table.id)):
         item["possible_duplicates"] = d
-    return {"items": new_rows, "notes": result["notes"], "model": f"{provider.name}:{provider.model}"}
+    return {"items": new_rows, "notes": result["notes"], "new_columns": result["new_columns"],
+            "model": f"{provider.name}:{provider.model}"}
 
 
-def commit(table, rows: list[dict], photo_ids: list[int]) -> dict:
+def commit(table, rows: list[dict], photo_ids: list[int], new_columns: list[dict] | None = None) -> dict:
+    """Add the reviewed rows. new_columns are the AI-suggested columns the user accepted; each row's
+    new_values ({label: value}) fill them."""
     inv.ensure_table_writable(table)
     uid = current_user_id()
+    added = {}
+    for c in clean_new_columns(new_columns, table):
+        col = inv._clean_column(c, table.column_keys())
+        table.columns = [*table.columns, col]
+        added[c["label"]] = col["key"]
+    if added:
+        rows = [{**r, "custom": {**(r.get("custom") or {}),
+                                 **{added[k]: v for k, v in (r.get("new_values") or {}).items() if k in added}}}
+                for r in rows]
     photos = (db.session.query(Photo)
               .filter(Photo.id.in_(photo_ids or [0]), Photo.item_id.is_(None)).all())
     by_id = {p.id: p for p in photos}

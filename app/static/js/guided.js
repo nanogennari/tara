@@ -3,8 +3,8 @@
 //   capture -> take photos (+ note) for AI, or type an item in
 //   confirm -> review the AI's proposal (accept / edit / ask AI to change) -> add -> back to capture
 import { api, get, icons, post, promptDialog, qtyFormat, resizeImage, runJob, toast, toastError } from "./util.js";
-import { toApi, toRow } from "./ai-wizard.js";
-import { columnDialog } from "./columns.js";
+import { mergeNewColumns, toApi, toRow } from "./ai-wizard.js";
+import { columnDialog, TYPE_LABELS } from "./columns.js";
 
 const MAX_PHOTOS = 20;
 
@@ -39,6 +39,8 @@ export function guidedComponent() {
     get customCols() { return (this.table?.columns || []).filter((c) => c.type !== "builtin" && !c.hidden); },
     get tablePath() { return this.table ? [...this.table.path, this.table.name].join(" / ") : ""; },
     get selectedCount() { return this.rows.filter((r) => r.include).length; },
+    get newCols() { return this.proposal?.newColumns || []; },
+    get canAnalyze() { return this.files.length > 0 || !!this.notes.trim(); },
 
     init() {
       window.addEventListener("guided:open", (e) => this.start(e.detail || {}));
@@ -135,11 +137,11 @@ export function guidedComponent() {
     stopTimer() { clearInterval(this.timer); this.timer = null; },
 
     async analyze() {
-      if (!this.files.length) return;
+      if (!this.canAnalyze) return;
       this.error = "";
       this.retryFn = null;
       this.step = "working";
-      this.startTimer("Looking at the photos…");
+      this.startTimer(this.files.length ? "Looking at the photos…" : "Reading your description…");
       this.abort = new AbortController();
       try {
         const fd = new FormData();
@@ -147,10 +149,11 @@ export function guidedComponent() {
         fd.append("notes", this.notes);
         fd.append("skip_existing", "1");
         const res = await runJob("POST", `/api/tables/${this.table.id}/ai/propose`, fd, { signal: this.abort.signal });
-        this.proposal = { photos: res.photos, notes: res.notes };
+        this.proposal = { photos: res.photos, notes: res.notes, newColumns: mergeNewColumns([], res.new_columns) };
         this.rows = res.items.map(toRow);
         if (!this.rows.length) {
-          this.error = "No new items found in these photos. Try another angle, add a note, or type it in.";
+          this.error = this.files.length ? "No new items found in these photos. Try another angle, add a note, or type it in."
+            : "No new items found in that description. Try rephrasing, or type it in.";
           this.discardDraft();
           this.step = "capture";
           return;
@@ -185,9 +188,11 @@ export function guidedComponent() {
       try {
         const res = await runJob("POST", `/api/tables/${this.table.id}/ai/refine`, {
           photo_ids: this.proposal.photos.map((p) => p.id), items: this.rows.map(toApi), instruction: text, notes: this.notes,
+          new_columns: this.newCols,
         });
         this.rows = res.items.map(toRow);
         if (res.notes) this.proposal.notes = res.notes;
+        this.proposal.newColumns = mergeNewColumns(this.newCols, res.new_columns);
         this.instruction = "";
       } catch (e) { this.fail(e, () => this.refine()); }
       finally { this.stopTimer(); this.step = "confirm"; }
@@ -198,7 +203,10 @@ export function guidedComponent() {
       this.step = "working";
       this.startTimer("Adding…");
       try {
-        const res = await post(`/api/tables/${this.table.id}/ai/commit`, { items, photo_ids: this.proposal.photos.map((p) => p.id) });
+        const accepted = this.newCols.filter((c) => c.accept);
+        const res = await post(`/api/tables/${this.table.id}/ai/commit`, { items, photo_ids: this.proposal.photos.map((p) => p.id),
+          new_columns: accepted });
+        if (accepted.length) this.table = await get(`/api/tables/${this.table.id}`);
         this.recordAdded(res.created);
         this.proposal = null;
         this.resetCapture();
@@ -263,5 +271,6 @@ export function guidedComponent() {
 
     qty: qtyFormat,
     photoFor(i) { return this.proposal?.photos[i]; },
+    typeLabel(t) { return TYPE_LABELS[t] || t; },
   };
 }

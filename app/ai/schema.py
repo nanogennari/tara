@@ -1,5 +1,6 @@
 """Per-table JSON schema for AI item proposals, plus validation/normalisation."""
 from .. import quantity
+from ..models import CUSTOM_TYPES
 from ..services.inventory import coerce_custom
 
 _JSON_TYPES = {
@@ -52,8 +53,19 @@ def build_schema(table) -> dict:
             "photo_indexes": {"type": "array", "items": {"type": "integer"},
                               "description": "Photos that clearly show this item, best first (0-based Photo N labels)"},
             "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+            "new_values": {
+                "type": "array",
+                "description": "Values for the suggested new_columns only (empty when none are suggested)",
+                "items": {
+                    "type": "object",
+                    "properties": {"column": {"type": "string", "description": "Label of a suggested new column"},
+                                   "value": {"type": "string"}},
+                    "required": ["column", "value"],
+                    "additionalProperties": False,
+                },
+            },
         },
-        "required": ["description", "quantity", "observation", "custom", "photo_indexes", "confidence"],
+        "required": ["description", "quantity", "observation", "custom", "photo_indexes", "confidence", "new_values"],
         "additionalProperties": False,
     }
     return {
@@ -61,8 +73,23 @@ def build_schema(table) -> dict:
         "properties": {
             "items": {"type": "array", "items": item},
             "notes": {"type": "string", "description": "Anything the user should double-check"},
+            "new_columns": {
+                "type": "array",
+                "description": "New columns to add to the table — ONLY when the user explicitly asked for them, else []",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string"},
+                        "type": {"type": "string", "enum": list(CUSTOM_TYPES)},
+                        "options": {"type": "array", "items": {"type": "string"},
+                                    "description": "Choices, for type select only"},
+                    },
+                    "required": ["label", "type", "options"],
+                    "additionalProperties": False,
+                },
+            },
         },
-        "required": ["items", "notes"],
+        "required": ["items", "notes", "new_columns"],
         "additionalProperties": False,
     }
 
@@ -89,6 +116,8 @@ def normalise(raw, table, n_photos: int) -> dict:
         raise ProposalError("The AI response did not contain an item list")
     types = {c["key"]: c["type"] for c in table.custom_columns()}
     options = {c["key"]: c.get("options") or [] for c in table.custom_columns()}
+    new_cols = clean_new_columns(raw.get("new_columns"), table)
+    new_types = {c["label"].casefold(): c for c in new_cols}
     items = []
     for r in raw["items"]:
         if not isinstance(r, dict):
@@ -114,6 +143,12 @@ def normalise(raw, table, n_photos: int) -> dict:
         if not idx and n_photos == 1:
             idx = [0]
         conf = r.get("confidence") if r.get("confidence") in ("high", "medium", "low") else "medium"
+        new_values = {}
+        for nv in r.get("new_values") if isinstance(r.get("new_values"), list) else []:
+            col = new_types.get(str(nv.get("column") or "").strip().casefold()) if isinstance(nv, dict) else None
+            v = coerce_custom(nv.get("value"), col["type"]) if col and nv.get("value") not in (None, "") else None
+            if v is not None and not (col["type"] == "select" and col["options"] and v not in col["options"]):
+                new_values[col["label"]] = v
         items.append({
             "description": desc[:2000],
             "quantity": quantity.clean(r.get("quantity")),
@@ -121,5 +156,23 @@ def normalise(raw, table, n_photos: int) -> dict:
             "custom": custom,
             "photo_indexes": idx,
             "confidence": conf,
+            "new_values": new_values,
         })
-    return {"items": items, "notes": str(raw.get("notes") or "").strip()[:2000]}
+    return {"items": items, "notes": str(raw.get("notes") or "").strip()[:2000], "new_columns": new_cols}
+
+
+def clean_new_columns(raw, table) -> list[dict]:
+    """Suggested columns: valid type, unique label not clashing with an existing column."""
+    taken = {(c.get("label") or c["key"]).casefold() for c in table.columns} | {c["key"] for c in table.columns}
+    out = []
+    for c in raw if isinstance(raw, list) else []:
+        if not isinstance(c, dict):
+            continue
+        label = str(c.get("label") or "").strip()[:60]
+        ctype = c.get("type") if c.get("type") in CUSTOM_TYPES else "text"
+        if not label or label.casefold() in taken:
+            continue
+        taken.add(label.casefold())
+        opts = [str(o).strip()[:80] for o in (c.get("options") or []) if str(o).strip()] if ctype == "select" else []
+        out.append({"label": label, "type": ctype, "options": list(dict.fromkeys(opts))})
+    return out

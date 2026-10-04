@@ -32,6 +32,12 @@ colours, strengths) as separate rows when the difference matters.
 items that might belong elsewhere)."""
 
 
+NEW_COLUMNS_RULE = """## New columns
+new_columns must be [] (and every item's new_values []) unless the user explicitly asks you to add, \
+create or suggest new columns/fields. When they do, propose only columns that don't already exist, \
+and put each item's values for them in new_values (by column label) — never in custom."""
+
+
 def system_prompt() -> str:
     override = (settings.get("ai.system_prompt") or "").strip()
     return override or DEFAULT_SYSTEM
@@ -90,8 +96,13 @@ def build_user_prompt(table, user_notes: str = "", n_photos: int = 0, skip_exist
         lines.append("")
 
     lines.append("## Photos")
-    lines.append(f"{n_photos} photo(s) attached, labeled Photo 0 to Photo {max(0, n_photos - 1)} in the order given.")
-    if user_notes.strip():
-        lines += ["", "## Notes from the person taking the photos", user_notes.strip()]
-    lines += ["", "Return the items as JSON matching the provided schema."]
+    if n_photos:
+        lines.append(f"{n_photos} photo(s) attached, labeled Photo 0 to Photo {max(0, n_photos - 1)} in the order given.")
+        if user_notes.strip():
+            lines += ["", "## Notes from the person taking the photos", user_notes.strip()]
+    else:
+        lines.append("No photos this time. Create the items from the user's description below; photo_indexes "
+                     "must be []. Don't add items the description doesn't mention.")
+        lines += ["", "## Items to add, as described by the user", user_notes.strip()]
+    lines += ["", NEW_COLUMNS_RULE, "", "Return the items as JSON matching the provided schema."]
     return "\n".join(lines)

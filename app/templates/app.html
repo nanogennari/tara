@@ -176,9 +176,9 @@
               <button class="rm" @click="removeFile(i)" aria-label="Remove photo"><i data-lucide="x"></i></button></div>
           </template>
         </div>
-        <textarea x-model="notes" rows="2" placeholder="Optional note for the AI (e.g. “these are the red-bag medicines”)"></textarea>
+        <textarea x-model="notes" rows="2" :placeholder="files.length ? 'Optional note for the AI (e.g. “these are the red-bag medicines”)' : 'Or just tell the AI what to add (e.g. “3 rolls of duct tape, 2 packs of A4 paper”)'"></textarea>
         <div class="row wrap">
-          <button class="btn btn-ai btn-lg grow" :disabled="!files.length" @click="analyze()"><i data-lucide="sparkles"></i><span x-text="files.length ? `Identify items in ${files.length} photo${files.length > 1 ? 's' : ''}` : 'Add photos to identify items'"></span></button>
+          <button class="btn btn-ai btn-lg grow" :disabled="!canAnalyze" @click="analyze()"><i data-lucide="sparkles"></i><span x-text="files.length ? `Identify items in ${files.length} photo${files.length > 1 ? 's' : ''}` : notes.trim() ? 'Add from description' : 'Add photos or describe items'"></span></button>
           <button class="btn btn-lg" @click="startManual()"><i data-lucide="keyboard"></i>Type it in</button>
         </div>
         <div x-show="added.length" class="stack" style="gap:6px">
@@ -233,6 +233,14 @@
       <section x-show="step === 'confirm'" class="stack">
         <div class="ai-notes" x-show="proposal?.notes"><i data-lucide="message-square-warning"></i><span x-text="proposal?.notes"></span></div>
         <h2 x-text="`Found ${rows.length} item${rows.length === 1 ? '' : 's'} — confirm to add`"></h2>
+        <div class="ai-newcols" x-show="newCols.length">
+          <div class="row small" style="gap:6px"><i data-lucide="columns-3"></i><strong>New columns suggested by the AI</strong><span class="muted">· ticked ones are added to the table</span></div>
+          <div class="row wrap" style="gap:6px">
+            <template x-for="c in newCols" :key="c.label">
+              <label class="chip" :class="c.accept && 'on'"><input type="checkbox" x-model="c.accept" class="sr-only"><span x-text="c.label"></span><span class="muted" x-text="typeLabel(c.type)"></span></label>
+            </template>
+          </div>
+        </div>
         <template x-for="(r, i) in rows" :key="i + ':' + r.description">
           <div class="g-item" :class="!r.include && 'off'">
             <input type="checkbox" x-model="r.include" aria-label="Include">
@@ -251,6 +259,9 @@
               </div>
               <template x-for="c in customCols" :key="c.key">
                 <div class="row small" style="gap:6px"><span class="muted" style="width:90px" x-text="c.label"></span><input x-model="r.custom[c.key]" style="min-height:28px"></div>
+              </template>
+              <template x-for="c in newCols.filter((c) => c.accept)" :key="'new:' + c.label">
+                <div class="row small" style="gap:6px"><span class="muted" style="width:90px"><span x-text="c.label"></span> <span class="badge badge-primary">new</span></span><input x-model="r.newValues[c.label]" style="min-height:28px"></div>
               </template>
               <template x-for="d in r.possible_duplicates"><div class="dupe"><i data-lucide="copy"></i><span x-text="(d.same_table ? 'Already here: ' : 'Maybe already in ' + d.table_name + ': ') + d.title"></span></div></template>
             </div>
@@ -406,7 +417,7 @@
             </div>
           </template>
         </div>
-        <label>Notes for the AI <span class="hint">(optional) — what's in the box, what to ignore, how to name things</span>
+        <label>Notes for the AI <span class="hint">— what's in the box, what to ignore, how to name things. No photos? Just describe the items to add.</span>
           <textarea x-model="notes" rows="2" placeholder="e.g. Medicine bag from the red box. Count tablets from the labels. Ignore the box itself."></textarea>
         </label>
         <label class="check"><input type="checkbox" x-model="skipExisting"> Skip items already in this table</label>
@@ -439,11 +450,20 @@
           <span class="muted">Applied:</span>
           <template x-for="h in history"><span class="badge badge-primary" x-text="h"></span></template>
         </div>
+        <div class="ai-newcols" x-show="newCols.length">
+          <div class="row small" style="gap:6px"><i data-lucide="columns-3"></i><strong>New columns suggested by the AI</strong><span class="muted">· ticked ones are added to the table</span></div>
+          <div class="row wrap" style="gap:6px">
+            <template x-for="c in newCols" :key="c.label">
+              <label class="chip" :class="c.accept && 'on'"><input type="checkbox" x-model="c.accept" class="sr-only"><span x-text="c.label"></span><span class="muted" x-text="typeLabel(c.type)"></span></label>
+            </template>
+          </div>
+        </div>
         <div style="overflow:auto">
           <table class="review">
             <thead><tr>
               <th style="width:28px"></th><th>Item</th><th style="width:120px">Qty</th><th>Obs</th>
               <template x-for="c in customCols" :key="c.key"><th x-text="c.label"></th></template>
+              <template x-for="c in newCols.filter((c) => c.accept)" :key="'new:' + c.label"><th><span x-text="c.label"></span> <span class="badge badge-primary">new</span></th></template>
               <th style="width:120px">Photos</th><th style="width:70px"></th>
             </tr></thead>
             <tbody>
@@ -477,6 +497,17 @@
                       </template>
                     </td>
                   </template>
+                  <template x-for="c in newCols.filter((c) => c.accept)" :key="'new:' + c.label">
+                    <td>
+                      <template x-if="c.type === 'select'">
+                        <select x-model="r.newValues[c.label]"><option value=""></option><template x-for="o in c.options"><option :value="o" x-text="o"></option></template></select>
+                      </template>
+                      <template x-if="c.type === 'checkbox'"><input type="checkbox" x-model="r.newValues[c.label]"></template>
+                      <template x-if="!['select','checkbox'].includes(c.type)">
+                        <input x-model="r.newValues[c.label]" :placeholder="c.type === 'date' ? 'YYYY-MM-DD' : ''" :aria-label="c.label">
+                      </template>
+                    </td>
+                  </template>
                   <td><div class="thumbs">
                     <template x-for="pi in r.photo_indexes" :key="pi">
                       <span class="thumb-x"><img :src="photoFor(pi)?.thumb" alt="" @click="previewProposal(pi)" :title="'Photo ' + (pi + 1)">
@@ -504,9 +535,9 @@
       <div class="modal-foot">
         <template x-if="step === 'upload'">
           <div class="row" style="width:100%">
-            <span class="small muted grow" x-text="files.length ? `${files.length} of ${maxPhotos} photos` : 'Add at least one photo'"></span>
+            <span class="small muted grow" x-text="files.length ? `${files.length} of ${maxPhotos} photos` : 'Add photos, or describe the items in the notes'"></span>
             <button class="btn" @click="close()">Cancel</button>
-            <button class="btn btn-ai" :disabled="!files.length" @click="analyze()"><i data-lucide="sparkles"></i>Analyze photos</button>
+            <button class="btn btn-ai" :disabled="!canAnalyze" @click="analyze()"><i data-lucide="sparkles"></i><span x-text="files.length ? 'Analyze photos' : 'Add from description'"></span></button>
           </div>
         </template>
         <template x-if="step === 'review'">

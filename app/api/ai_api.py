@@ -47,7 +47,8 @@ def ai_propose(tid):
 @editor_required
 def ai_commit(tid):
     d = body()
-    res = ai_service.commit(inv.get_table(tid), d.get("items") or [], int_list(d.get("photo_ids")))
+    res = ai_service.commit(inv.get_table(tid), d.get("items") or [], int_list(d.get("photo_ids")),
+                            d.get("new_columns") or [])
     return jsonify(res), 201
 
 
@@ -67,7 +68,7 @@ def ai_refine(tid):
     return _run("refine", lambda: ai_service.refine(
         inv.get_table(tid), int_list(d.get("photo_ids")), d.get("items") or [],
         d.get("instruction", ""), int(row_index) if row_index is not None else None,
-        [str(h) for h in (d.get("history") or [])], d.get("notes", "")))
+        [str(h) for h in (d.get("history") or [])], d.get("notes", ""), d.get("new_columns") or []))
 
 
 @bp.post("/ai/chat")

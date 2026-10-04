@@ -1,5 +1,6 @@
 // "Add with AI" wizard: upload photos -> AI proposal -> review (accept / edit / ask AI to change) -> commit.
 import { api, get, icons, post, qtyFormat, resizeImage, runJob, toast, toastError } from "./util.js";
+import { TYPE_LABELS } from "./columns.js";
 
 const MAX_PHOTOS = 20;
 
@@ -31,6 +32,8 @@ export function aiWizardComponent() {
     get s() { return Alpine.store("app"); },
     get customCols() { return (this.table?.columns || []).filter((c) => c.type !== "builtin" && !c.hidden); },
     get selectedCount() { return this.rows.filter((r) => r.include).length; },
+    get newCols() { return this.proposal?.newColumns || []; },
+    get canAnalyze() { return this.files.length > 0 || !!this.notes.trim(); },
 
     init() {
       window.addEventListener("ai:open", (e) => this.show(e.detail.tableId));
@@ -100,20 +103,20 @@ export function aiWizardComponent() {
     stopTimer() { clearInterval(this.timer); this.timer = null; },
 
     async analyze() {
-      if (!this.files.length) return;
+      if (!this.canAnalyze) return;
       this.error = "";
       this.retryFn = null;
       this.step = "working";
-      this.startTimer("Preparing photos…");
+      this.startTimer(this.files.length ? "Preparing photos…" : "Reading your description…");
       this.abort = new AbortController();
       try {
         const fd = new FormData();
         for (const f of this.files) fd.append("photos", await resizeImage(f.file, 1568, 0.88));
         fd.append("notes", this.notes);
         fd.append("skip_existing", this.skipExisting ? "1" : "0");
-        this.workingLabel = `Looking at ${this.files.length} photo${this.files.length > 1 ? "s" : ""}…`;
+        if (this.files.length) this.workingLabel = `Looking at ${this.files.length} photo${this.files.length > 1 ? "s" : ""}…`;
         const res = await runJob("POST", `/api/tables/${this.tableId}/ai/propose`, fd, { signal: this.abort.signal });
-        this.proposal = { photos: res.photos, notes: res.notes, model: res.model };
+        this.proposal = { photos: res.photos, notes: res.notes, model: res.model, newColumns: mergeNewColumns([], res.new_columns) };
         this.rows = res.items.map(toRow);
         this.step = "review";
         if (!this.rows.length) this.error = "The AI didn't find any new items. You can ask it to look again below.";
@@ -150,7 +153,7 @@ export function aiWizardComponent() {
       try {
         const res = await runJob("POST", `/api/tables/${this.tableId}/ai/refine`, {
           photo_ids: this.proposal.photos.map((p) => p.id), items: this.rows.map(toApi), instruction: text,
-          row_index: rowIndex, history: this.history, notes: this.notes,
+          row_index: rowIndex, history: this.history, notes: this.notes, new_columns: this.newCols,
         }, { signal: this.abort.signal });
         this.versions.push(JSON.parse(JSON.stringify(this.rows)));
         const prevIncluded = this.rows.map((r) => r.include);
@@ -161,6 +164,7 @@ export function aiWizardComponent() {
           return row;
         });
         if (res.notes) this.proposal.notes = res.notes;
+        this.proposal.newColumns = mergeNewColumns(this.newCols, res.new_columns);
         this.history.push(rowIndex === null ? text : `Row ${rowIndex + 1}: ${text}`);
         this.instruction = "";
         this.rowRefine = { index: null, text: "" };
@@ -198,7 +202,8 @@ export function aiWizardComponent() {
       this.step = "working";
       this.startTimer("Adding items…");
       try {
-        const res = await post(`/api/tables/${this.tableId}/ai/commit`, { items, photo_ids: this.proposal.photos.map((p) => p.id) });
+        const res = await post(`/api/tables/${this.tableId}/ai/commit`, { items, photo_ids: this.proposal.photos.map((p) => p.id),
+          new_columns: this.newCols.filter((c) => c.accept) });
         toast(`Added ${res.created.length} item${res.created.length === 1 ? "" : "s"}`);
         this.proposal = null;
         this.close(true);
@@ -211,6 +216,7 @@ export function aiWizardComponent() {
     },
 
     photoFor(i) { return this.proposal?.photos[i]; },
+    typeLabel(t) { return TYPE_LABELS[t] || t; },
     confLabel(c) { return { high: "High confidence", medium: "Medium confidence", low: "Low confidence — check carefully" }[c]; },
   };
 }
@@ -226,6 +232,7 @@ export function toRow(it) {
     photo_indexes: it.photo_indexes || [],
     confidence: it.confidence || "medium",
     possible_duplicates: it.possible_duplicates || [],
+    newValues: { ...(it.new_values || {}) },
     changed: false,
   };
 }
@@ -239,5 +246,12 @@ export function toApi(r) {
     custom: r.custom,
     photo_indexes: r.photo_indexes,
     confidence: r.confidence,
+    new_values: r.newValues || {},
   };
+}
+
+/** AI-suggested new columns ({label, type, options}); keeps the user's accept/reject choices by label. */
+export function mergeNewColumns(prev, next) {
+  const accepted = Object.fromEntries((prev || []).map((c) => [c.label.toLowerCase(), c.accept]));
+  return (next || []).map((c) => ({ ...c, accept: accepted[c.label.toLowerCase()] ?? true }));
 }

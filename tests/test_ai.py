@@ -96,6 +96,47 @@ def test_propose_and_commit(client, app, monkeypatch):
     assert client.get(f"/api/tables/{t['id']}").get_json()["items"][0]["ai_generated"] is False
 
 
+def test_text_only_propose_with_new_columns(client, monkeypatch):
+    from app.ai import service
+
+    class Texter(FakeProvider):
+        def generate(self, images, system, prompt, schema):
+            FakeProvider.calls.append({"images": images, "prompt": prompt, "schema": schema})
+            return {"items": [
+                {"description": "Duct tape", "quantity": {"type": "pack", "value": 3, "unit": "rolls", "text": "", "estimated": False},
+                 "observation": "", "custom": {}, "photo_indexes": [0], "confidence": "high",
+                 "new_values": [{"column": "colour", "value": "grey"}, {"column": "Nope", "value": "x"}]}],
+                "notes": "", "new_columns": [{"label": "Colour", "type": "text", "options": []},
+                                             {"label": "Description", "type": "text", "options": []}]}
+
+    monkeypatch.setattr(service, "get_provider", lambda *a, **k: Texter({"model": "fake-1"}))
+    t = client.post("/api/tables", json={"name": "Box 05"}).get_json()
+    assert client.post(f"/api/tables/{t['id']}/ai/propose", data={}).status_code == 422
+
+    r = client.post(f"/api/tables/{t['id']}/ai/propose", data={"notes": "3 rolls of grey duct tape, add a colour column"})
+    assert r.status_code == 200, r.get_json()
+    prop = r.get_json()
+    call = FakeProvider.calls[-1]
+    assert call["images"] == [] and "add a colour column" in call["prompt"] and "No photos" in call["prompt"]
+    assert "new_columns must be []" in call["prompt"]
+    assert prop["photos"] == []
+    assert prop["new_columns"] == [{"label": "Colour", "type": "text", "options": []}]  # clash with built-in dropped
+    item = prop["items"][0]
+    assert item["photo_indexes"] == [] and item["new_values"] == {"Colour": "grey"}
+
+    # Rejected suggestion: no column, value dropped
+    client.post(f"/api/tables/{t['id']}/ai/commit", json={"items": [item], "photo_ids": []})
+    data = client.get(f"/api/tables/{t['id']}").get_json()
+    assert "Colour" not in [c["label"] for c in data["columns"]] and data["items"][0]["custom"] == {}
+
+    # Accepted suggestion: column created and filled
+    client.post(f"/api/tables/{t['id']}/ai/commit",
+                json={"items": [item], "photo_ids": [], "new_columns": prop["new_columns"]})
+    data = client.get(f"/api/tables/{t['id']}").get_json()
+    col = next(c for c in data["columns"] if c["label"] == "Colour")
+    assert data["items"][1]["custom"] == {col["key"]: "grey"}
+
+
 def test_ai_rate_limit(client, monkeypatch):
     from app.ai import service
     monkeypatch.setattr(service, "get_provider", lambda *a, **k: FakeProvider({"model": "fake-1"}))
