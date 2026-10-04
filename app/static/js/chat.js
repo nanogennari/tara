@@ -88,6 +88,13 @@ export function chatComponent() {
       }
     },
     stop() { this.abort?.abort(); },
+    /** Re-ask the question that produced the error at index i (without duplicating it). */
+    retry(i) {
+      const q = this.messages[i - 1]?.role === "user" ? this.messages[i - 1].content : null;
+      if (!q || this.busy) return;
+      this.messages.splice(i - 1, 2);
+      this.send(q);
+    },
 
     runActions(actions) {
       for (const a of actions) {

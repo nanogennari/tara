@@ -24,6 +24,7 @@ export function aiWizardComponent() {
     timer: null,
     abort: null,
     error: "",
+    retryFn: null,
 
     get s() { return Alpine.store("app"); },
     get customCols() { return (this.table?.columns || []).filter((c) => c.type !== "builtin" && !c.hidden); },
@@ -93,6 +94,7 @@ export function aiWizardComponent() {
     async analyze() {
       if (!this.files.length) return;
       this.error = "";
+      this.retryFn = null;
       this.step = "working";
       this.startTimer("Preparing photos…");
       this.abort = new AbortController();
@@ -109,17 +111,31 @@ export function aiWizardComponent() {
         if (!this.rows.length) this.error = "The AI didn't find any new items. You can ask it to look again below.";
       } catch (e) {
         if (e.name === "AbortError") { this.step = "upload"; return; }
-        this.error = e.message;
+        this.fail(e, () => this.analyze());
         this.step = "upload";
       } finally { this.stopTimer(); this.abort = null; }
     },
     cancelWork() { this.abort?.abort(); },
+
+    /** Show an error with a "Try again" button that repeats the failed step. */
+    fail(e, retry) {
+      this.error = e.message || String(e);
+      this.retryFn = retry || null;
+    },
+    tryAgain() {
+      const f = this.retryFn;
+      this.error = "";
+      this.retryFn = null;
+      f?.();
+    },
+
 
     async refine(rowIndex = null) {
       const text = (rowIndex === null ? this.instruction : this.rowRefine.text).trim();
       if (!text) return;
       const before = this.step;
       this.error = "";
+      this.retryFn = null;
       this.step = "working";
       this.startTimer(rowIndex === null ? "Revising the draft…" : `Revising row ${rowIndex + 1}…`);
       this.abort = new AbortController();
@@ -141,7 +157,7 @@ export function aiWizardComponent() {
         this.instruction = "";
         this.rowRefine = { index: null, text: "" };
       } catch (e) {
-        if (e.name !== "AbortError") this.error = e.message;
+        if (e.name !== "AbortError") this.fail(e, () => this.refine(rowIndex));
       } finally {
         this.stopTimer();
         this.abort = null;
@@ -173,7 +189,7 @@ export function aiWizardComponent() {
         this.s.refreshViews((k) => k === `table:${this.tableId}`);
         this.s.loadTree();
       } catch (e) {
-        this.error = e.message;
+        this.fail(e, () => this.commit());
         this.step = "review";
       } finally { this.stopTimer(); }
     },

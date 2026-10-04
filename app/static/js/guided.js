@@ -23,6 +23,7 @@ export function guidedComponent() {
     timer: null,
     abort: null,
     error: "",
+    retryFn: null,
     added: [],         // items added this session (newest first)
     manual: null,
 
@@ -120,6 +121,7 @@ export function guidedComponent() {
     async analyze() {
       if (!this.files.length) return;
       this.error = "";
+      this.retryFn = null;
       this.step = "working";
       this.startTimer("Looking at the photos…");
       this.abort = new AbortController();
@@ -139,11 +141,24 @@ export function guidedComponent() {
         }
         this.step = "confirm";
       } catch (e) {
-        if (e.name !== "AbortError") this.error = e.message;
+        if (e.name !== "AbortError") this.fail(e, () => this.analyze());
         this.step = "capture";
       } finally { this.stopTimer(); this.abort = null; }
     },
     cancel() { this.abort?.abort(); },
+
+    /** Show an error with a "Try again" button that repeats the failed step. */
+    fail(e, retry) {
+      this.error = e.message || String(e);
+      this.retryFn = retry || null;
+    },
+    tryAgain() {
+      const f = this.retryFn;
+      this.error = "";
+      this.retryFn = null;
+      f?.();
+    },
+
 
     // ---------------------------------------------------- confirm
     async refine() {
@@ -158,7 +173,7 @@ export function guidedComponent() {
         this.rows = res.items.map(toRow);
         if (res.notes) this.proposal.notes = res.notes;
         this.instruction = "";
-      } catch (e) { this.error = e.message; }
+      } catch (e) { this.fail(e, () => this.refine()); }
       finally { this.stopTimer(); this.step = "confirm"; }
     },
     async confirm() {
@@ -172,7 +187,7 @@ export function guidedComponent() {
         this.proposal = null;
         this.resetCapture();
         this.step = "capture";
-      } catch (e) { this.error = e.message; this.step = "confirm"; }
+      } catch (e) { this.fail(e, () => this.confirm()); this.step = "confirm"; }
       finally { this.stopTimer(); }
     },
     discardDraft() {
@@ -213,7 +228,7 @@ export function guidedComponent() {
         this.recordAdded([item]);
         m.files.forEach((f) => URL.revokeObjectURL(f.url));
         if (again) this.startManual(); else this.step = "capture";
-      } catch (e) { this.error = e.message; this.step = "manual"; }
+      } catch (e) { this.fail(e, () => this.saveManual(again)); this.step = "manual"; }
       finally { this.stopTimer(); }
     },
 

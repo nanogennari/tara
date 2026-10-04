@@ -257,3 +257,28 @@ def test_google_client_is_kept_alive():
     # a throwaway client per call made every request fail with "client has been closed".
     p = providers.GoogleProvider({"api_key": "k", "model": "gemini-2.5-flash"})
     assert p._client() is p._client()
+
+
+def test_gemini_retries_transient_errors(monkeypatch):
+    from google.genai import errors
+
+    calls = []
+
+    class Models:
+        def generate_content(self, **kw):
+            calls.append(1)
+            if len(calls) < 3:
+                raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand", "status": "UNAVAILABLE"}})
+            return type("R", (), {"usage_metadata": None, "text": "{}"})()
+
+    p = providers.GoogleProvider({"api_key": "k", "model": "gemini-2.5-flash"})
+    monkeypatch.setattr(p, "_client", lambda: type("C", (), {"models": Models()})())
+    monkeypatch.setattr(providers.GoogleProvider, "RETRY_DELAYS", (0, 0))
+    p.call([], None)
+    assert len(calls) == 3
+
+    calls.clear()
+    monkeypatch.setattr(providers.GoogleProvider, "RETRY_DELAYS", (0,))
+    import pytest
+    with pytest.raises(providers.AIError, match="server error"):
+        p.call([], None)

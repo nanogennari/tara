@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import re
+import time
 
 import requests
 
@@ -271,14 +272,24 @@ class GoogleProvider(Provider):
             return resp.parsed
         return _parse_json(resp.text or "")
 
+    RETRY_DELAYS = (2, 5)  # seconds; Gemini often answers 503 "high demand" / 429 briefly
+
     def call(self, contents, config):
         from google.genai import errors
-        try:
-            resp = self._client().models.generate_content(model=self.model, contents=contents, config=config)
-        except errors.ClientError as e:
-            raise AIError(f"Gemini rejected the request: {getattr(e, 'message', e)}") from e
-        except errors.ServerError as e:
-            raise AIError(f"Gemini server error: {getattr(e, 'message', e)}") from e
+        for attempt in range(len(self.RETRY_DELAYS) + 1):
+            try:
+                resp = self._client().models.generate_content(model=self.model, contents=contents, config=config)
+                break
+            except (errors.ClientError, errors.ServerError) as e:
+                code = getattr(e, "code", None)
+                transient = isinstance(e, errors.ServerError) or code == 429
+                if transient and attempt < len(self.RETRY_DELAYS):
+                    log.info("Gemini %s, retrying in %ss", code, self.RETRY_DELAYS[attempt])
+                    time.sleep(self.RETRY_DELAYS[attempt])
+                    continue
+                if isinstance(e, errors.ServerError):
+                    raise AIError(f"Gemini server error: {getattr(e, 'message', e)}") from e
+                raise AIError(f"Gemini rejected the request: {getattr(e, 'message', e)}") from e
         um = getattr(resp, "usage_metadata", None)
         if um is not None:
             self.add_usage(um.prompt_token_count, (um.candidates_token_count or 0) + (getattr(um, "thoughts_token_count", 0) or 0))

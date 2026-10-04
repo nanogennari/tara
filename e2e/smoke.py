@@ -25,7 +25,8 @@ with sync_playwright() as p:
     browser = p.chromium.launch()
     ctx = browser.new_context(viewport={"width": 1440, "height": 900})
     page = ctx.new_page()
-    page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
+    # AI calls fail on purpose here (no provider configured); the browser logs those 422s as errors
+    page.on("console", lambda m: m.type == "error" and "status of 422" not in m.text and errors.append(f"console: {m.text}"))
     page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
 
     # ---- first-run setup (or login if already set up)
@@ -180,6 +181,16 @@ with sync_playwright() as p:
     page.wait_for_selector(".dropzone")
     check_icons("AI wizard")
     shot(page, "09-ai-wizard")
+    # No AI provider is configured in the smoke test, so analysis fails: "Try again" must be offered
+    sample_photo = next(p for p in Path(".devdata/uploads").rglob("*.jpg") if p.name.count(".") == 1)
+    page.set_input_files('.dropzone input[multiple]', str(sample_photo))
+    page.click("text=Analyze photos")
+    page.wait_for_selector('[x-data="aiWizard"] .alert-retry button:has-text("Try again")')
+    page.click('[x-data="aiWizard"] .alert-retry button:has-text("Try again")')
+    page.wait_for_selector('[x-data="aiWizard"] .alert-retry button:has-text("Try again")')
+    if page.locator('[x-data="aiWizard"] .preview').count() != 1:
+        errors.append("ai: photos were lost after a failed analysis")
+    shot(page, "09b-ai-wizard-retry")
     page.keyboard.press("Escape")
 
     # ---- archive a table from the tree context menu
@@ -226,6 +237,16 @@ with sync_playwright() as p:
     page.wait_for_selector(".chat-panel.open .chip")
     page.wait_for_timeout(400)  # slide-in transition
     shot(page, "19-chat-panel")
+    page.fill(".chat-input textarea", "What is in this box?")
+    page.press(".chat-input textarea", "Enter")
+    page.wait_for_selector(".msg.error .retry")
+    page.click(".msg.error .retry")
+    page.wait_for_timeout(300)
+    page.wait_for_selector(".msg.error .retry")
+    n_user = page.locator(".msg.user").count()
+    if n_user != 1:
+        errors.append(f"chat: Try again duplicated the question ({n_user} user messages)")
+    shot(page, "19b-chat-retry")
     page.click(".chat-head [aria-label=Close]")
 
     # ---- dark mode + mobile

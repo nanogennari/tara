@@ -123,7 +123,8 @@
     </header>
 
     <div class="guided-body">
-      <div class="alert alert-error" x-show="error" x-text="error"></div>
+      <div class="alert alert-error alert-retry" x-show="error" role="alert"><span class="grow" x-text="error"></span>
+          <button class="btn btn-sm" x-show="!!retryFn" @click="tryAgain()"><i data-lucide="rotate-ccw"></i>Try again</button></div>
 
       <!-- where: browse folders, pick/create a table -->
       <section x-show="step === 'where'" class="stack">
@@ -266,7 +267,10 @@
       <template x-for="(m, i) in messages" :key="i">
         <div class="msg" :class="[m.role, m.error && 'error']">
           <template x-if="m.steps?.length"><div class="steps"><template x-for="st in m.steps"><span class="step" x-text="st.label"></span></template></div></template>
-          <div class="bubble" x-html="m.role === 'assistant' ? md(m.content) : md(m.content)"></div>
+          <div class="bubble" x-html="md(m.content)"></div>
+          <template x-if="m.error && i === messages.length - 1">
+            <button class="btn btn-sm retry" @click="retry(i)" :disabled="busy"><i data-lucide="rotate-ccw"></i>Try again</button>
+          </template>
         </div>
       </template>
       <div class="msg assistant" x-show="busy"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>
@@ -359,7 +363,8 @@
 
       <!-- step: upload -->
       <div class="modal-body" x-show="step === 'upload'">
-        <div class="alert alert-error" x-show="error" x-text="error"></div>
+        <div class="alert alert-error alert-retry" x-show="error" role="alert"><span class="grow" x-text="error"></span>
+          <button class="btn btn-sm" x-show="!!retryFn" @click="tryAgain()"><i data-lucide="rotate-ccw"></i>Try again</button></div>
         <div class="dropzone" :class="dragging && 'hover'" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop($event)">
           <i data-lucide="images"></i>
           <div><strong>Drop photos of the box contents</strong><br><span class="small">or paste from clipboard · up to 12 photos</span></div>
@@ -395,7 +400,8 @@
 
       <!-- step: review -->
       <div class="modal-body" x-show="step === 'review'">
-        <div class="alert alert-error" x-show="error" x-text="error"></div>
+        <div class="alert alert-error alert-retry" x-show="error" role="alert"><span class="grow" x-text="error"></span>
+          <button class="btn btn-sm" x-show="!!retryFn" @click="tryAgain()"><i data-lucide="rotate-ccw"></i>Try again</button></div>
         <div class="ai-notes" x-show="proposal?.notes"><i data-lucide="message-square-warning"></i><span x-text="proposal?.notes"></span></div>
         <div class="row wrap">
           <strong x-text="rows.length + ' proposed items'"></strong>
