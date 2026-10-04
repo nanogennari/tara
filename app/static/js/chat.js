@@ -1,5 +1,5 @@
 // "Ask AI" side panel: chat with tool-using assistant that sees the screen and can navigate.
-import { api, esc, icons } from "./util.js";
+import { esc, icons, runJob } from "./util.js";
 
 const KEY = "chat.history";
 
@@ -74,7 +74,7 @@ export function chatComponent() {
       this.busy = true;
       this.abort = new AbortController();
       try {
-        const res = await api("POST", "/api/ai/chat", {
+        const res = await runJob("POST", "/api/ai/chat", {
           message: q, history, context: this.shareContext ? this.s.screenContext() : null,
         }, { signal: this.abort.signal });
         this.messages.push({ role: "assistant", content: res.reply, steps: res.steps, model: res.model });

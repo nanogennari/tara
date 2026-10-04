@@ -293,3 +293,29 @@ def test_photo_order_is_kept_best_first(app):
         out = normalise({"items": [{"description": "Splendor", "photo_indexes": [9, 4, 9, 2, 7, 1, 30]}]}, t, 10)
         # model's ranking kept (first = thumbnail), duplicates/out-of-range dropped, capped at 4
         assert out["items"][0]["photo_indexes"] == [9, 4, 2, 7]
+
+
+def test_background_job_flow(client, editor, app, monkeypatch):
+    """AI calls run as background jobs; the browser polls (mobile drops long requests)."""
+    import time
+    from app.ai import service
+    monkeypatch.setattr(service, "get_provider", lambda *a, **k: FakeProvider({"model": "fake-1"}))
+    service._calls.clear()
+    t = client.post("/api/tables", json={"name": "B"}).get_json()
+    app.config["TESTING"] = False
+    try:
+        r = editor.post(f"/api/tables/{t['id']}/ai/propose", data={"photos": [(_img(), "a.jpg")]},
+                        content_type="multipart/form-data")
+        assert r.status_code == 202
+        jid = r.get_json()["job"]
+        for _ in range(100):
+            job = editor.get(f"/api/ai/jobs/{jid}").get_json()
+            if job["status"] != "running":
+                break
+            time.sleep(0.05)
+    finally:
+        app.config["TESTING"] = True
+    assert job["status"] == "done" and len(job["result"]["items"]) == 2
+    assert client.get(f"/api/ai/jobs/{jid}").status_code == 404  # other users can't read it
+    by = {u["user"]: u for u in client.get("/api/admin/usage").get_json()["per_user"]}
+    assert by["editor"]["calls"] == 1  # usage attributed to the requesting user

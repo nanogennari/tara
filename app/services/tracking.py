@@ -4,6 +4,8 @@ before_flush  -> InvTable.content_updated_at/by for any content change (items, p
 after_flush   -> collect search index tasks
 after_commit  -> hand tasks to the index worker (dropped on rollback)
 """
+from contextvars import ContextVar
+
 from flask import has_request_context
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
@@ -18,7 +20,22 @@ _TREE_ATTRS = ("name", "active", "deleted_at", "parent_id", "folder_id")
 _PENDING_KEY = "search_index_tasks"
 
 
+_acting_user: ContextVar = ContextVar("acting_user", default=None)
+
+
+def act_as(uid):
+    """Attribute writes/usage in a background thread (no request) to this user."""
+    return _acting_user.set(uid)
+
+
+def act_as_reset(token):
+    _acting_user.reset(token)
+
+
 def current_user_id():
+    acting = _acting_user.get()
+    if acting is not None:
+        return acting
     if not has_request_context():
         return None
     from flask_login import current_user

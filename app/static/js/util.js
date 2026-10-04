@@ -27,6 +27,43 @@ export async function api(method, url, body, { signal } = {}) {
   return data;
 }
 export const get = (u, o) => api("GET", u, undefined, o);
+
+/**
+ * Run an AI request as a server-side job and wait for its result.
+ * Mobile browsers kill long requests when the app goes to the background; polling with
+ * short requests survives that: failed polls are retried, and we re-check right away
+ * when the page becomes visible again.
+ */
+export async function runJob(method, url, body, { signal } = {}) {
+  const start = await api(method, url, body, { signal });
+  if (!start || !start.job) return start; // server answered inline
+  const deadline = Date.now() + 20 * 60 * 1000;
+  let delay = 800;
+  for (;;) {
+    await waitOrVisible(delay, signal);
+    try {
+      const job = await get(`/api/ai/jobs/${start.job}`, { signal });
+      if (job.status === "done") return job.result;
+      if (job.status === "error") throw new ApiError(job.error, 422);
+    } catch (e) {
+      // status 0 = network failure (e.g. tab was in the background): keep waiting
+      if (e.name === "AbortError" || !(e instanceof ApiError) || e.status !== 0 || Date.now() > deadline) throw e;
+    }
+    delay = Math.min(3000, delay + 400);
+  }
+}
+
+function waitOrVisible(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+    const done = () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); signal?.removeEventListener("abort", onAbort); resolve(); };
+    const onVis = () => { if (document.visibilityState === "visible") done(); };
+    const onAbort = () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); reject(new DOMException("Aborted", "AbortError")); };
+    const timer = setTimeout(done, ms);
+    document.addEventListener("visibilitychange", onVis);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 export const post = (u, b, o) => api("POST", u, b ?? {}, o);
 export const patch = (u, b) => api("PATCH", u, b);
 export const put = (u, b) => api("PUT", u, b);

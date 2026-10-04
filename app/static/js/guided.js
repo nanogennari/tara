@@ -2,7 +2,7 @@
 //   where   -> browse folders, pick or create a table
 //   capture -> take photos (+ note) for AI, or type an item in
 //   confirm -> review the AI's proposal (accept / edit / ask AI to change) -> add -> back to capture
-import { api, get, icons, post, promptDialog, qtyFormat, resizeImage, toast, toastError } from "./util.js";
+import { api, get, icons, post, promptDialog, qtyFormat, resizeImage, runJob, toast, toastError } from "./util.js";
 import { toApi, toRow } from "./ai-wizard.js";
 
 const MAX_PHOTOS = 20;
@@ -144,7 +144,7 @@ export function guidedComponent() {
         for (const f of this.files) fd.append("photos", await resizeImage(f.file, 1568, 0.88));
         fd.append("notes", this.notes);
         fd.append("skip_existing", "1");
-        const res = await api("POST", `/api/tables/${this.table.id}/ai/propose`, fd, { signal: this.abort.signal });
+        const res = await runJob("POST", `/api/tables/${this.table.id}/ai/propose`, fd, { signal: this.abort.signal });
         this.proposal = { photos: res.photos, notes: res.notes };
         this.rows = res.items.map(toRow);
         if (!this.rows.length) {
@@ -181,7 +181,7 @@ export function guidedComponent() {
       this.step = "working";
       this.startTimer("Applying your change…");
       try {
-        const res = await post(`/api/tables/${this.table.id}/ai/refine`, {
+        const res = await runJob("POST", `/api/tables/${this.table.id}/ai/refine`, {
           photo_ids: this.proposal.photos.map((p) => p.id), items: this.rows.map(toApi), instruction: text, notes: this.notes,
         });
         this.rows = res.items.map(toRow);

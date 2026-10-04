@@ -1,5 +1,5 @@
 // "Add with AI" wizard: upload photos -> AI proposal -> review (accept / edit / ask AI to change) -> commit.
-import { api, get, icons, post, qtyFormat, resizeImage, toast, toastError } from "./util.js";
+import { api, get, icons, post, qtyFormat, resizeImage, runJob, toast, toastError } from "./util.js";
 
 const MAX_PHOTOS = 20;
 
@@ -112,7 +112,7 @@ export function aiWizardComponent() {
         fd.append("notes", this.notes);
         fd.append("skip_existing", this.skipExisting ? "1" : "0");
         this.workingLabel = `Looking at ${this.files.length} photo${this.files.length > 1 ? "s" : ""}…`;
-        const res = await api("POST", `/api/tables/${this.tableId}/ai/propose`, fd, { signal: this.abort.signal });
+        const res = await runJob("POST", `/api/tables/${this.tableId}/ai/propose`, fd, { signal: this.abort.signal });
         this.proposal = { photos: res.photos, notes: res.notes, model: res.model };
         this.rows = res.items.map(toRow);
         this.step = "review";
@@ -148,7 +148,7 @@ export function aiWizardComponent() {
       this.startTimer(rowIndex === null ? "Revising the draft…" : `Revising row ${rowIndex + 1}…`);
       this.abort = new AbortController();
       try {
-        const res = await api("POST", `/api/tables/${this.tableId}/ai/refine`, {
+        const res = await runJob("POST", `/api/tables/${this.tableId}/ai/refine`, {
           photo_ids: this.proposal.photos.map((p) => p.id), items: this.rows.map(toApi), instruction: text,
           row_index: rowIndex, history: this.history, notes: this.notes,
         }, { signal: this.abort.signal });
