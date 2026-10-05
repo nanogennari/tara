@@ -471,6 +471,8 @@ export class TableView {
     cb.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault(); // state is driven by Tabulator's selection (synced in rowSelected/rowDeselected)
+      // ...but the browser reverts a prevented click's checkbox state after this handler, undoing that sync
+      setTimeout(() => { cb.checked = row.isSelected(); });
       const rows = this.grid.getRows("active");
       if (e.shiftKey && this.lastChecked) {
         const a = rows.indexOf(this.lastChecked), b = rows.indexOf(row);
