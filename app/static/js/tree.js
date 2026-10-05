@@ -238,6 +238,7 @@ function showMenu(s, kind, id, x, y) {
       { label: "Copy link", icon: "link", action: () => s.copyLink(`/f/${id}`) },
       { label: "Search in this folder", icon: "search", action: () => window.dispatchEvent(new CustomEvent("palette:open", { detail: { folders: [id] } })) },
       { label: "Export XLSX", icon: "download", action: () => { location.href = `/api/export/xlsx?folder_id=${id}`; } },
+      { label: "Download photos (ZIP)", icon: "images", action: () => downloadPhotos(`folder_id=${id}`) },
       ed && "-",
       ed && { label: "Delete…", icon: "trash-2", danger: true, action: () => bulk(s, "delete", { folders: [id], tables: [] }) },
     ]);
@@ -255,6 +256,7 @@ function showMenu(s, kind, id, x, y) {
     { label: "Copy link", icon: "link", action: () => s.copyLink(`/t/${id}`) },
     { label: "Export XLSX", icon: "download", action: () => { location.href = `/api/export/xlsx?tables=${id}`; } },
     { label: "Export CSV", icon: "file-text", action: () => { location.href = `/api/tables/${id}/export.csv`; } },
+    { label: "Download photos (ZIP)", icon: "images", action: () => downloadPhotos(`tables=${id}`) },
     ed && "-",
     ed && { label: "Delete…", icon: "trash-2", danger: true, action: () => bulk(s, "delete", { folders: [], tables: [id] }) },
   ]);
@@ -267,6 +269,8 @@ function bulkMenu(s, x, y) {
     ed && { label: "Archive", icon: "archive", action: () => bulk(s, "archive") },
     ed && { label: "Reactivate", icon: "archive-restore", action: () => bulk(s, "reactivate") },
     { label: "Export XLSX", icon: "download", action: () => { location.href = `/api/export/xlsx?tables=${[...s.sel.tables].join(",")}`; }, disabled: !s.sel.tables.size },
+    { label: "Download photos (ZIP)", icon: "images",
+      action: () => downloadPhotos(`folders=${[...s.sel.folders].join(",")}&tables=${[...s.sel.tables].join(",")}`) },
     ed && "-",
     ed && { label: `Delete ${s.selCount}…`, icon: "trash-2", danger: true, action: () => bulk(s, "delete") },
     "-",
@@ -330,6 +334,16 @@ export async function aiContextDialog(kind, id, name) {
       toast(!form.ctx.value.trim() ? "Using the inherited AI context" : form.append.checked ? "AI context saved (added to the inherited one)" : "AI context saved");
     } catch (err) { toastError(err); }
   };
+}
+
+/** Download a ZIP of the photos in scope (query string for /api/export/photos.zip). */
+export async function downloadPhotos(query) {
+  try {
+    const { photos } = await get(`/api/export/photos.zip?${query}&check=1`);
+    if (!photos) return toast("No photos here");
+    toast(`Preparing ${photos} photo${photos > 1 ? "s" : ""}…`);
+    location.href = `/api/export/photos.zip?${query}`;
+  } catch (e) { toastError(e); }
 }
 
 async function moveTo(s, nodes) {

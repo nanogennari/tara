@@ -179,6 +179,7 @@ export class TableView {
         export: () => contextMenu(r.left, r.bottom + 4, [
           { label: "Excel (.xlsx) with photos", icon: "file-spreadsheet", action: () => { location.href = `/api/export/xlsx?tables=${this.id}`; } },
           { label: "CSV", icon: "file-text", action: () => { location.href = `/api/tables/${this.id}/export.csv`; } },
+          { label: "All photos (ZIP)", icon: "images", action: () => import("./tree.js").then((m) => m.downloadPhotos(`tables=${this.id}`)) },
         ]),
         more: () => this.moreMenu(r.right - 200, r.bottom + 4),
       })[b.dataset.act]?.();

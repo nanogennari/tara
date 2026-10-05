@@ -84,3 +84,23 @@ def test_export_roundtrip(client):
     tid = client.get("/api/tree").get_json()["tables"][0]["id"]
     csv = client.get(f"/api/tables/{tid}/export.csv").get_data(as_text=True)
     assert "Neosporin ointment" in csv
+
+
+def test_photos_zip(client):
+    import zipfile
+    f = client.post("/api/folders", json={"name": "Storage"}).get_json()
+    _upload(client, "/api/import/xlsx", folder_id=str(f["id"]))
+    check = client.get(f"/api/export/photos.zip?folder_id={f['id']}&check=1").get_json()
+    assert check["photos"] == stats()["photos"]
+
+    r = client.get(f"/api/export/photos.zip?folder_id={f['id']}")
+    assert r.status_code == 200 and r.mimetype == "application/zip"
+    assert "Storage_photos.zip" in r.headers["Content-Disposition"]
+    names = zipfile.ZipFile(io.BytesIO(r.data)).namelist()
+    assert len(names) == stats()["photos"] and len(set(names)) == len(names)
+    assert all(n.startswith("Storage/") and n.endswith(".jpg") for n in names)
+    assert any(n.startswith("Storage/Box 01 Medicine Box/001 Neosporin ointment") for n in names), names[:5]
+
+    empty = client.post("/api/tables", json={"name": "Empty"}).get_json()
+    assert client.get(f"/api/export/photos.zip?tables={empty['id']}&check=1").get_json()["photos"] == 0
+    assert client.get(f"/api/export/photos.zip?tables={empty['id']}").status_code == 404

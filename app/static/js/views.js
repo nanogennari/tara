@@ -1,6 +1,6 @@
 // Folder overview, Trash and full search results views.
 import { ageDays, confirmDialog, contextMenu, debounce, del, esc, fmtDateTime, get, icon, icons, post, relTime, toast, toastError } from "./util.js";
-import { bulk } from "./tree.js";
+import { bulk, downloadPhotos } from "./tree.js";
 import { applyGridVars, gridDefault } from "./prefs.js";
 
 // ------------------------------------------------------------ folder view
@@ -52,6 +52,7 @@ export class FolderView {
             <button class="btn" data-a="all">${icon("list")} See all items</button>
             <button class="btn" data-a="search">${icon("search")} Search here</button>
             <button class="btn" data-a="export">${icon("download")} Export</button>
+            <button class="btn" data-a="photos">${icon("images")} Photos (ZIP)</button>
             ${ed ? `<button class="btn" data-a="archive">${icon(folder.active ? "archive" : "archive-restore")} ${folder.active ? "Archive" : "Reactivate"}</button>` : ""}
           </div>
         </div>
@@ -101,6 +102,7 @@ export class FolderView {
         search: () => window.dispatchEvent(new CustomEvent("palette:open", { detail: { folders: [this.id] } })),
         all: () => this.s.openFolderItems(this.id),
         export: () => { location.href = `/api/export/xlsx?folder_id=${this.id}`; },
+        photos: () => downloadPhotos(`folder_id=${this.id}`),
         archive: () => bulk(this.s, folder.active ? "archive" : "reactivate", { folders: [this.id], tables: [] }).then(() => this.load()),
       })[a]?.();
     };
@@ -152,6 +154,7 @@ export class FolderItemsView {
         <label class="check small"><input type="checkbox" data-arch ${this.includeArchived ? "checked" : ""}> Include archived tables</label>
         <span class="grow"></span>
         <a class="btn" href="/api/export/xlsx?folder_id=${d.folder.id}">${icon("download")}<span class="label-sm">Export</span></a>
+        <button class="btn" data-photos>${icon("images")}<span class="label-sm">Photos (ZIP)</span></button>
       </div>
       <div class="grid-wrap"><div class="grid"></div></div>`;
     icons(this.el);
@@ -159,6 +162,8 @@ export class FolderItemsView {
       e.preventDefault(); this.s.openFolder(Number(a.dataset.folder));
     }));
     this.el.querySelector("[data-arch]").addEventListener("change", (e) => { this.includeArchived = e.target.checked; this.load(); });
+    this.el.querySelector("[data-photos]").addEventListener("click", () =>
+      downloadPhotos(`folder_id=${this.id}&include_archived=${this.includeArchived ? 1 : 0}`));
     this.el.querySelector(".filter").addEventListener("input", debounce((e) => { this.filterText = e.target.value; this.applyFilter(); }, 150));
 
     const mobile = matchMedia("(max-width: 600px)").matches;
