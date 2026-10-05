@@ -105,14 +105,34 @@ def run_migrations_online():
     connectable = get_engine()
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=get_metadata(),
-            **conf_args
-        )
+        # SQLite rebuilds a table in batch mode by copying it and dropping the original. With
+        # foreign keys enforced (the app turns them on for every connection), dropping the original
+        # fires ON DELETE CASCADE / SET NULL on every row that references it - e.g. rebuilding
+        # `folder` deleted all subfolders, tables, items and photo links. Migrations must run with
+        # enforcement off (the pragma only takes effect outside a transaction), then be checked.
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+        try:
+            context.configure(
+                connection=connection,
+                target_metadata=get_metadata(),
+                **conf_args
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+
+            if sqlite:
+                broken = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+                if broken:
+                    raise RuntimeError(f"Migration left rows with broken foreign keys: {broken[:20]}")
+        finally:
+            if sqlite:
+                connection.rollback()  # the pragma is ignored inside an open transaction
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
 
 
 if context.is_offline_mode():
