@@ -201,7 +201,15 @@ class _GoogleAdapter(_Adapter):
     def add_results(self, results):
         t = self.types
         self.contents.append(t.Content(role="user", parts=[
-            t.Part.from_function_response(name=c["name"], response={"result": json.loads(out)}) for c, out in results]))
+            t.Part.from_function_response(name=c["name"], response={"result": _json_or_text(out)}) for c, out in results]))
+
+
+def _json_or_text(out: str):
+    """Tool output as JSON for Gemini; a result clipped for length is no longer valid JSON, so pass it as text."""
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return out
 
 
 class _OllamaAdapter(_Adapter):

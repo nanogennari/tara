@@ -46,10 +46,11 @@ def submit(kind: str, fn) -> str:
             except (AIError, PhotoError) as e:
                 db.session.rollback()
                 _jobs[jid].update(status="error", error=str(e))
-            except Exception:  # noqa: BLE001 - report something useful instead of hanging
+            except Exception as e:  # noqa: BLE001 - report something useful instead of hanging
                 log.exception("AI job %s failed", kind)
                 db.session.rollback()
-                _jobs[jid].update(status="error", error="Something went wrong on the server. Try again.")
+                _jobs[jid].update(status="error", error=f"Something went wrong on the server ({type(e).__name__}). "
+                                                        "Try again; if it keeps happening, check the server log.")
             finally:
                 tracking.act_as_reset(token)
                 db.session.remove()

@@ -105,3 +105,10 @@ def test_anthropic_adapter_replays_content_verbatim(monkeypatch):
     assert second["messages"][1]["content"][0].signature == "sig"  # thinking block replayed unchanged
     assert second["messages"][2]["content"][0]["type"] == "tool_result"
     assert "temperature" not in second and "tool_choice" not in second
+
+
+def test_gemini_adapter_accepts_clipped_tool_output():
+    from app.ai.chat import _json_or_text
+    assert _json_or_text('{"a": 1}') == {"a": 1}
+    clipped = '{"items": [1, 2..."(truncated — narrow the request)"'
+    assert _json_or_text(clipped) == clipped

@@ -282,11 +282,19 @@ class GoogleProvider(Provider):
     RETRY_DELAYS = (2, 5)  # seconds; Gemini often answers 503 "high demand" / 429 briefly
 
     def call(self, contents, config):
+        import httpx
         from google.genai import errors
         for attempt in range(len(self.RETRY_DELAYS) + 1):
             try:
                 resp = self._client().models.generate_content(model=self.model, contents=contents, config=config)
                 break
+            except httpx.TransportError as e:
+                # DNS failures, refused/reset connections, timeouts: usually brief, so retry
+                if attempt < len(self.RETRY_DELAYS):
+                    log.info("Gemini network error (%s), retrying in %ss", e, self.RETRY_DELAYS[attempt])
+                    time.sleep(self.RETRY_DELAYS[attempt])
+                    continue
+                raise AIError(f"Could not reach Gemini (network error: {e}). Check the server's internet/DNS.") from e
             except (errors.ClientError, errors.ServerError) as e:
                 code = getattr(e, "code", None)
                 transient = isinstance(e, errors.ServerError) or code == 429

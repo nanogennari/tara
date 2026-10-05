@@ -326,6 +326,24 @@ def test_gemini_retries_transient_errors(monkeypatch):
         p.call([], None)
 
 
+def test_gemini_network_errors_are_retried_then_reported(monkeypatch):
+    import httpx
+    import pytest
+    calls = []
+
+    class Models:
+        def generate_content(self, **kw):
+            calls.append(1)
+            raise httpx.ConnectError("[Errno -3] Temporary failure in name resolution")
+
+    p = providers.GoogleProvider({"api_key": "k", "model": "gemini-2.5-flash"})
+    monkeypatch.setattr(p, "_client", lambda: type("C", (), {"models": Models()})())
+    monkeypatch.setattr(providers.GoogleProvider, "RETRY_DELAYS", (0, 0))
+    with pytest.raises(providers.AIError, match="Could not reach Gemini"):
+        p.call([], None)
+    assert len(calls) == 3
+
+
 def test_photo_order_is_kept_best_first(app):
     from app.ai.schema import normalise
     with app.app_context():
