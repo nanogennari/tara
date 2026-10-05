@@ -35,6 +35,22 @@ def update_folder(fid):
     return jsonify(f.to_dict())
 
 
+@bp.get("/ai/context")
+def ai_context_lookup():
+    """Effective AI context for a table or folder, and where it comes from (for the edit dialog)."""
+    from ..services.tree import ai_context
+    tid, fid = request.args.get("table_id", type=int), request.args.get("folder_id", type=int)
+    if tid is not None:
+        t = inv.get_table(tid)
+        own, inherited = t.ai_context or "", ai_context(folder_id=t.folder_id)
+    elif fid is not None:
+        f = inv.get_folder(fid)
+        own, inherited = f.ai_context or "", ai_context(folder_id=f.parent_id)
+    else:
+        own, inherited = "", ai_context()
+    return jsonify(own=own, inherited=inherited)
+
+
 @bp.get("/folders/<int:fid>")
 def folder_view(fid):
     """Folder overview: tables directly inside plus sub-folders, with last-updated info."""

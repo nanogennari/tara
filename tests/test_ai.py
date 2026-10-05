@@ -378,3 +378,34 @@ def test_background_job_flow(client, editor, app, monkeypatch):
     assert client.get(f"/api/ai/jobs/{jid}").status_code == 404  # other users can't read it
     by = {u["user"]: u for u in client.get("/api/admin/usage").get_json()["per_user"]}
     assert by["editor"]["calls"] == 1  # usage attributed to the requesting user
+
+
+def test_ai_context_overrides(client, app):
+    from app.services import settings
+    with app.app_context():
+        settings.set("ai.org_context", "GLOBAL CTX")
+    top = client.post("/api/folders", json={"name": "Brasil"}).get_json()
+    sub = client.post("/api/folders", json={"name": "Rio", "parent_id": top["id"]}).get_json()
+    t = client.post("/api/tables", json={"name": "Box", "folder_id": sub["id"]}).get_json()
+
+    def used(tid):
+        with app.app_context():
+            from app.services import inventory as inv
+            return prompt_mod.build_user_prompt(inv.get_table(tid), "", 1)
+
+    assert "GLOBAL CTX" in used(t["id"])
+    client.patch(f"/api/folders/{top['id']}", json={"ai_context": "BRASIL CTX"})
+    p = used(t["id"])
+    assert "BRASIL CTX" in p and "GLOBAL CTX" not in p  # replaced, not appended
+    client.patch(f"/api/tables/{t['id']}", json={"ai_context": "TABLE CTX"})
+    assert "TABLE CTX" in used(t["id"])
+
+    ctx = client.get(f"/api/ai/context?table_id={t['id']}").get_json()
+    assert ctx["own"] == "TABLE CTX" and ctx["inherited"]["source"]["name"] == "Brasil"
+    client.patch(f"/api/tables/{t['id']}", json={"ai_context": "  "})  # cleared -> inherits again
+    assert client.get(f"/api/ai/context?table_id={t['id']}").get_json()["own"] == ""
+
+    with app.app_context():
+        from app.ai import chat
+        assert "BRASIL CTX" in chat._system_prompt({"active": {"type": "folder", "id": sub["id"]}})
+        assert "GLOBAL CTX" in chat._system_prompt({"active": {"type": "search"}})

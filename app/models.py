@@ -97,6 +97,8 @@ class Folder(db.Model):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Replaces the global AI organisation context for everything inside (unless a deeper one is set)
+    ai_context: Mapped[str | None] = mapped_column(Text)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"))
     delete_batch: Mapped[str | None] = mapped_column(String(36), index=True)
@@ -110,7 +112,7 @@ class Folder(db.Model):
 
     def to_dict(self):
         return {"id": self.id, "parent_id": self.parent_id, "name": self.name,
-                "position": self.position, "active": self.active}
+                "position": self.position, "active": self.active, "ai_context": self.ai_context or ""}
 
     def path(self) -> list[str]:
         names, f = [], self
@@ -127,6 +129,7 @@ class InvTable(db.Model):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
     context: Mapped[str | None] = mapped_column(Text)
+    ai_context: Mapped[str | None] = mapped_column(Text)  # replaces the folder's / global AI context
     columns: Mapped[list] = mapped_column(MutableList.as_mutable(JSON), default=default_columns)
     position: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -158,6 +161,7 @@ class InvTable(db.Model):
         d = {
             "id": self.id, "folder_id": self.folder_id, "name": self.name,
             "summary": self.summary or "", "context": self.context or "",
+            "ai_context": self.ai_context or "",
             "columns": list(self.columns or []), "position": self.position,
             "active": self.active,
             "content_updated_at": _iso(self.content_updated_at),

@@ -3,7 +3,7 @@ import json
 
 from .. import quantity
 from ..services import settings
-from ..services.tree import FolderMap
+from ..services.tree import FolderMap, ai_context
 
 DEFAULT_SYSTEM = """You catalogue physical inventory from photos. You are given photos of the \
 contents of one storage container (box, bag, shelf...) and must list every distinct item you can \
@@ -46,7 +46,7 @@ def system_prompt() -> str:
 def build_user_prompt(table, user_notes: str = "", n_photos: int = 0, skip_existing: bool = True) -> str:
     fmap = FolderMap()
     path = fmap.path(table.folder_id) + [table.name]
-    org = (settings.get("ai.org_context") or "").strip()
+    org = ai_context(table_id=table.id)["text"]
     cap = int(settings.get("ai.max_existing_items") or 200)
 
     lines = []

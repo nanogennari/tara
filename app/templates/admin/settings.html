@@ -187,7 +187,7 @@
       </div>
       <div class="panel">
         <h2>Context & prompt</h2>
-        <label>Organization context <span class="hint">sent with every request — who you are, what the inventory is for, naming conventions, language</span>
+        <label>Organization context <span class="hint">sent with every request — who you are, what the inventory is for, naming conventions, language. A folder or table can replace it with its own (right-click it in the sidebar → AI context…)</span>
           <textarea x-model="ai.org_context" rows="4" placeholder="SigmaCamp Brasil — a math & science camp. Inventory of camp materials stored between editions. Write descriptions in English; keep brand names."></textarea>
         </label>
         <label>Max existing rows sent for context<input type="number" min="0" max="2000" x-model.number="ai.max_existing_items" style="max-width:140px"></label>

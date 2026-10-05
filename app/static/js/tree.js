@@ -1,5 +1,5 @@
 // Sidebar folder tree: rendering, multi-select, drag & drop, context menus, bulk actions.
-import { ageDays, confirmDialog, fmtDateTime, contextMenu, esc, folderPicker, icon, icons, impactText, patch, post,
+import { ageDays, confirmDialog, fmtDateTime, contextMenu, esc, folderPicker, get, icon, icons, impactText, patch, post,
   promptDialog, relTime, toast, toastError } from "./util.js";
 
 export function renderTree(root, s) {
@@ -231,6 +231,7 @@ function showMenu(s, kind, id, x, y) {
       ed && { label: "Import XLSX here…", icon: "file-spreadsheet", action: () => window.dispatchEvent(new CustomEvent("import:open", { detail: { folderId: id } })) },
       "-",
       ed && { label: "Rename", icon: "pencil", action: () => rename(s, "folder", id, f.name) },
+      ed && { label: "AI context…", icon: "sparkles", action: () => aiContextDialog("folder", id, f.name) },
       ed && { label: "Move to…", icon: "folder-input", action: () => moveTo(s, { folders: [id], tables: [] }) },
       ed && { label: f.active ? "Archive (inactive)" : "Reactivate", icon: f.active ? "archive" : "archive-restore",
         action: () => setActive(s, { folders: [id], tables: [] }, !f.active) },
@@ -247,6 +248,7 @@ function showMenu(s, kind, id, x, y) {
     ed && "-",
     ed && t.effective_active && { label: "Guided add into this…", icon: "scan-line", action: () => window.dispatchEvent(new CustomEvent("guided:open", { detail: { tableId: id } })) },
     ed && { label: "Rename", icon: "pencil", action: () => rename(s, "table", id, t.name) },
+    ed && { label: "AI context…", icon: "sparkles", action: () => aiContextDialog("table", id, t.name) },
     ed && { label: "Move to…", icon: "folder-input", action: () => moveTo(s, { folders: [], tables: [id] }) },
     ed && { label: t.active ? "Archive (inactive)" : "Reactivate", icon: t.active ? "archive" : "archive-restore",
       action: () => setActive(s, { folders: [], tables: [id] }, !t.active) },
@@ -280,6 +282,43 @@ async function rename(s, kind, id, current) {
     await s.loadTree();
     s.refreshViews((k) => k === `${kind}:${id}`);
   } catch (e) { toastError(e); }
+}
+
+/** Edit the AI context of a folder/table: replaces the inherited (parent folder or global) one. */
+export async function aiContextDialog(kind, id, name) {
+  let ctx;
+  try { ctx = await get(`/api/ai/context?${kind}_id=${id}`); }
+  catch (e) { return toastError(e); }
+  const src = ctx.inherited.source;
+  const from = src ? `the folder “${src.name}”` : "the global setting (Settings → AI assistant)";
+  const back = document.createElement("div");
+  back.className = "modal-back dialog";
+  back.innerHTML = `
+    <form class="modal">
+      <div class="modal-head"><h2>AI context · ${esc(name)}</h2></div>
+      <div class="modal-body">
+        <p class="hint">Tells the AI about the organisation for everything in this ${kind}: who you are, the language
+          to write in, naming rules. When set, it <strong>replaces</strong> the context from ${esc(from)}${kind === "folder" ? "; subfolders and tables can set their own" : ""}.</p>
+        <label>Context for this ${kind}<textarea name="ctx" rows="6" placeholder="Leave empty to use the inherited context">${esc(ctx.own)}</textarea></label>
+        <details ${ctx.own ? "" : "open"}><summary class="small muted">Inherited from ${esc(from)}</summary>
+          <p class="small" style="white-space:pre-wrap">${ctx.inherited.text ? esc(ctx.inherited.text) : '<span class="muted">(empty)</span>'}</p></details>
+      </div>
+      <div class="modal-foot"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn btn-primary">Save</button></div>
+    </form>`;
+  document.body.appendChild(back);
+  const form = back.querySelector("form");
+  form.ctx.focus();
+  const close = () => back.remove();
+  back.querySelector("[data-cancel]").onclick = close;
+  back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await patch(`/api/${kind === "folder" ? "folders" : "tables"}/${id}`, { ai_context: form.ctx.value });
+      close();
+      toast(form.ctx.value.trim() ? "AI context saved" : "Using the inherited AI context");
+    } catch (err) { toastError(err); }
+  };
 }
 
 async function moveTo(s, nodes) {

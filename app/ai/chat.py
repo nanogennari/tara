@@ -67,8 +67,16 @@ def _check_rate(uid):
         q.append(now)
 
 
-def _system_prompt() -> str:
-    org = (settings.get("ai.org_context") or "").strip()
+def _system_prompt(context: dict | None = None) -> str:
+    from ..services.tree import ai_context
+    a = (context or {}).get("active") or {}
+    try:
+        aid = int(a.get("id")) if a.get("id") is not None else None
+    except (TypeError, ValueError):
+        aid = None
+    # The open table / folder may replace the global organisation context
+    org = ai_context(table_id=aid if a.get("type") == "table" else None,
+                     folder_id=aid if a.get("type") in ("folder", "folderitems") else None)["text"]
     return SYSTEM.format(
         app=settings.get("app.name"), org=f"About the organisation: {org}\n\n" if org else "",
         today=datetime.now(settings.tz()).strftime("%Y-%m-%d (%A)"))
@@ -304,7 +312,7 @@ def ask(message: str, history=None, context: dict | None = None, provider=None, 
     _check_rate(current_user_id())
     provider = provider or get_provider()
     level = EFFORTS.get(effort) or EFFORTS["medium"]
-    adapter = _adapter_for(provider)(provider, _system_prompt(), _clean_history(history),
+    adapter = _adapter_for(provider)(provider, _system_prompt(context), _clean_history(history),
                                      f"{screen_text(context)}\n\n{message[:4000]}", level["reasoning"])
     actions: list[dict] = []
     steps: list[dict] = []
