@@ -97,6 +97,8 @@ def update_folder(f: Folder, data: dict) -> Folder:
         f.position = int(data["position"])
     if "ai_context" in data:
         f.ai_context = (data["ai_context"] or "").strip()[:5000] or None
+    if "ai_context_append" in data:
+        f.ai_context_append = bool(data["ai_context_append"])
     db.session.commit()
     return f
 
@@ -136,6 +138,8 @@ def update_table(t: InvTable, data: dict) -> InvTable:
             setattr(t, field, (data[field] or "").strip())
     if "ai_context" in data:
         t.ai_context = (data["ai_context"] or "").strip()[:5000] or None
+    if "ai_context_append" in data:
+        t.ai_context_append = bool(data["ai_context_append"])
     if "name" in data:
         t.name = _clean_name(data["name"])
     if "folder_id" in data:

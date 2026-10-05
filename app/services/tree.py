@@ -63,21 +63,40 @@ class FolderMap:
 
 
 def ai_context(table_id: int | None = None, folder_id: int | None = None) -> dict:
-    """The organisation context the AI should use here: the table's own, else the nearest folder's
-    (walking up), else the global setting. Returns {text, source: {type, id, name} | None}."""
+    """The organisation context the AI should use here. Walks up from the table through its folders:
+    a context set to replace stops the walk; one set to append is added on top of what's above it;
+    reaching the top adds the global setting. Returns {text, sources: [{type, id, name} | None]}
+    with sources outermost first (None = the global setting)."""
     from . import settings
+    parts: list[tuple[dict | None, str]] = []  # innermost first
+
+    def take(source, text, append) -> bool:
+        """Record a node's context; True when the walk should stop here."""
+        if not (text or "").strip():
+            return False
+        parts.append((source, text.strip()))
+        return not append
+
+    done = False
     if table_id is not None:
         t = db.session.get(InvTable, table_id)
         if t is not None:
-            if (t.ai_context or "").strip():
-                return {"text": t.ai_context.strip(), "source": {"type": "table", "id": t.id, "name": t.name}}
+            done = take({"type": "table", "id": t.id, "name": t.name}, t.ai_context, t.ai_context_append)
             folder_id = t.folder_id
-    if folder_id is not None:
-        rows = dict(db.session.query(Folder.id, Folder.ai_context).filter(Folder.ai_context.isnot(None)).all())
+    if not done and folder_id is not None:
+        rows = {r.id: r for r in db.session.query(Folder.id, Folder.ai_context, Folder.ai_context_append)
+                .filter(Folder.ai_context.isnot(None))}
         for n in reversed(FolderMap().chain(folder_id)):
-            if (rows.get(n.id) or "").strip():
-                return {"text": rows[n.id].strip(), "source": {"type": "folder", "id": n.id, "name": n.name}}
-    return {"text": (settings.get("ai.org_context") or "").strip(), "source": None}
+            r = rows.get(n.id)
+            if r and take({"type": "folder", "id": n.id, "name": n.name}, r.ai_context, r.ai_context_append):
+                done = True
+                break
+    if not done:
+        g = (settings.get("ai.org_context") or "").strip()
+        if g:
+            parts.append((None, g))
+    parts.reverse()
+    return {"text": "\n\n".join(text for _, text in parts), "sources": [src for src, _ in parts]}
 
 
 def table_state(t: InvTable, fmap: FolderMap | None = None) -> dict:

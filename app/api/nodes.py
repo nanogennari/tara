@@ -42,13 +42,13 @@ def ai_context_lookup():
     tid, fid = request.args.get("table_id", type=int), request.args.get("folder_id", type=int)
     if tid is not None:
         t = inv.get_table(tid)
-        own, inherited = t.ai_context or "", ai_context(folder_id=t.folder_id)
+        own, append, inherited = t.ai_context or "", t.ai_context_append, ai_context(folder_id=t.folder_id)
     elif fid is not None:
         f = inv.get_folder(fid)
-        own, inherited = f.ai_context or "", ai_context(folder_id=f.parent_id)
+        own, append, inherited = f.ai_context or "", f.ai_context_append, ai_context(folder_id=f.parent_id)
     else:
-        own, inherited = "", ai_context()
-    return jsonify(own=own, inherited=inherited)
+        own, append, inherited = "", False, ai_context()
+    return jsonify(own=own, append=bool(append), inherited=inherited)
 
 
 @bp.get("/folders/<int:fid>")

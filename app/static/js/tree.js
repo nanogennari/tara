@@ -284,13 +284,13 @@ async function rename(s, kind, id, current) {
   } catch (e) { toastError(e); }
 }
 
-/** Edit the AI context of a folder/table: replaces the inherited (parent folder or global) one. */
+/** Edit the AI context of a folder/table: replaces, or adds to, the inherited (parent folders / global) one. */
 export async function aiContextDialog(kind, id, name) {
   let ctx;
   try { ctx = await get(`/api/ai/context?${kind}_id=${id}`); }
   catch (e) { return toastError(e); }
-  const src = ctx.inherited.source;
-  const from = src ? `the folder “${src.name}”` : "the global setting (Settings → AI assistant)";
+  const names = ctx.inherited.sources.map((src) => (src ? `the folder “${src.name}”` : "the global setting"));
+  const from = names.length ? names.join(" + ") : "the global setting (empty)";
   const back = document.createElement("div");
   back.className = "modal-back dialog";
   back.innerHTML = `
@@ -298,8 +298,11 @@ export async function aiContextDialog(kind, id, name) {
       <div class="modal-head"><h2>AI context · ${esc(name)}</h2></div>
       <div class="modal-body">
         <p class="hint">Tells the AI about the organisation for everything in this ${kind}: who you are, the language
-          to write in, naming rules. When set, it <strong>replaces</strong> the context from ${esc(from)}${kind === "folder" ? "; subfolders and tables can set their own" : ""}.</p>
+          to write in, naming rules.${kind === "folder" ? " Subfolders and tables can set their own." : ""}</p>
         <label>Context for this ${kind}<textarea name="ctx" rows="6" placeholder="Leave empty to use the inherited context">${esc(ctx.own)}</textarea></label>
+        <label class="check"><input type="checkbox" name="append" ${ctx.append ? "checked" : ""}>
+          Add to the inherited context instead of replacing it</label>
+        <p class="hint" data-effect></p>
         <details ${ctx.own ? "" : "open"}><summary class="small muted">Inherited from ${esc(from)}</summary>
           <p class="small" style="white-space:pre-wrap">${ctx.inherited.text ? esc(ctx.inherited.text) : '<span class="muted">(empty)</span>'}</p></details>
       </div>
@@ -307,6 +310,14 @@ export async function aiContextDialog(kind, id, name) {
     </form>`;
   document.body.appendChild(back);
   const form = back.querySelector("form");
+  const effect = () => {
+    back.querySelector("[data-effect]").textContent = !form.ctx.value.trim() ? "Empty: the inherited context is used as is."
+      : form.append.checked ? "The AI gets the inherited context below, followed by this one."
+      : "The AI gets only this context; the inherited one below is ignored here.";
+  };
+  form.ctx.addEventListener("input", effect);
+  form.append.addEventListener("change", effect);
+  effect();
   form.ctx.focus();
   const close = () => back.remove();
   back.querySelector("[data-cancel]").onclick = close;
@@ -314,9 +325,9 @@ export async function aiContextDialog(kind, id, name) {
   form.onsubmit = async (e) => {
     e.preventDefault();
     try {
-      await patch(`/api/${kind === "folder" ? "folders" : "tables"}/${id}`, { ai_context: form.ctx.value });
+      await patch(`/api/${kind === "folder" ? "folders" : "tables"}/${id}`, { ai_context: form.ctx.value, ai_context_append: form.append.checked });
       close();
-      toast(form.ctx.value.trim() ? "AI context saved" : "Using the inherited AI context");
+      toast(!form.ctx.value.trim() ? "Using the inherited AI context" : form.append.checked ? "AI context saved (added to the inherited one)" : "AI context saved");
     } catch (err) { toastError(err); }
   };
 }

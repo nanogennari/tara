@@ -401,7 +401,7 @@ def test_ai_context_overrides(client, app):
     assert "TABLE CTX" in used(t["id"])
 
     ctx = client.get(f"/api/ai/context?table_id={t['id']}").get_json()
-    assert ctx["own"] == "TABLE CTX" and ctx["inherited"]["source"]["name"] == "Brasil"
+    assert ctx["own"] == "TABLE CTX" and [x["name"] for x in ctx["inherited"]["sources"]] == ["Brasil"]
     client.patch(f"/api/tables/{t['id']}", json={"ai_context": "  "})  # cleared -> inherits again
     assert client.get(f"/api/ai/context?table_id={t['id']}").get_json()["own"] == ""
 
@@ -409,3 +409,25 @@ def test_ai_context_overrides(client, app):
         from app.ai import chat
         assert "BRASIL CTX" in chat._system_prompt({"active": {"type": "folder", "id": sub["id"]}})
         assert "GLOBAL CTX" in chat._system_prompt({"active": {"type": "search"}})
+
+
+def test_ai_context_append_stacks_up_the_tree(client, app):
+    from app.services import settings
+    from app.services.tree import ai_context
+    with app.app_context():
+        settings.set("ai.org_context", "GLOBAL")
+    top = client.post("/api/folders", json={"name": "Brasil"}).get_json()
+    sub = client.post("/api/folders", json={"name": "Rio", "parent_id": top["id"]}).get_json()
+    t = client.post("/api/tables", json={"name": "Box", "folder_id": sub["id"]}).get_json()
+    client.patch(f"/api/folders/{sub['id']}", json={"ai_context": "RIO", "ai_context_append": True})
+    client.patch(f"/api/tables/{t['id']}", json={"ai_context": "BOX", "ai_context_append": True})
+    with app.app_context():
+        assert ai_context(table_id=t["id"])["text"] == "GLOBAL\n\nRIO\n\nBOX"
+    # A replacing folder above stops the walk: the global context is dropped
+    client.patch(f"/api/folders/{top['id']}", json={"ai_context": "BRASIL"})
+    with app.app_context():
+        c = ai_context(table_id=t["id"])
+        assert c["text"] == "BRASIL\n\nRIO\n\nBOX"
+        assert [x["name"] for x in c["sources"]] == ["Brasil", "Rio", "Box"]
+    ctx = client.get(f"/api/ai/context?table_id={t['id']}").get_json()
+    assert ctx["append"] is True and ctx["inherited"]["text"] == "BRASIL\n\nRIO"
