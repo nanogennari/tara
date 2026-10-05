@@ -75,4 +75,5 @@ def ai_refine(tid):
 def ai_chat():
     from ..ai import chat
     d = body()
-    return _run("chat", lambda: chat.ask(d.get("message", ""), d.get("history"), d.get("context")))
+    return _run("chat", lambda: chat.ask(d.get("message", ""), d.get("history"), d.get("context"),
+                                         effort=str(d.get("effort") or "medium")))

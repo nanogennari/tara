@@ -20,7 +20,14 @@ from .providers import AIError, AnthropicProvider, GoogleProvider, OllamaProvide
 
 log = logging.getLogger(__name__)
 
-MAX_STEPS = 8
+# Effort: how many tool rounds the assistant may take, and how hard it reasons (where the provider supports it)
+EFFORTS = {
+    "low": {"steps": 4, "reasoning": "low"},
+    "medium": {"steps": 8, "reasoning": "medium"},
+    "high": {"steps": 20, "reasoning": "high"},
+}
+WRAP_UP = ("You have used all your lookups for this question. Do not call any more tools: answer now with what "
+           "you found, say briefly what you couldn't check, and suggest a narrower follow-up if useful.")
 MAX_HISTORY_TURNS = 20
 RATE_LIMIT, RATE_WINDOW = 20, 60
 _calls: dict[int, deque] = defaultdict(deque)
@@ -98,17 +105,19 @@ def screen_text(ctx: dict | None) -> str:
 # ---------------------------------------------------------------- adapters
 
 class _Adapter:
-    def __init__(self, provider, system, history, user_text):
+    def __init__(self, provider, system, history, user_text, reasoning="medium"):
         self.p = provider
         self.system = system
         self.history = history
         self.user_text = user_text
+        self.reasoning = reasoning
 
-    def step(self) -> tuple[str, list[dict]]:
-        """Returns (text, tool_calls[{id, name, args}])."""
+    def step(self, final: bool = False) -> tuple[str, list[dict]]:
+        """Returns (text, tool_calls[{id, name, args}]). final=True forbids tool calls."""
         raise NotImplementedError
 
-    def add_results(self, results: list[tuple[dict, str]]):
+    def add_results(self, results: list[tuple[dict, str]], note: str | None = None):
+        """Feed tool outputs back; note is an extra instruction from us in the same turn."""
         raise NotImplementedError
 
 
@@ -120,10 +129,12 @@ class _AnthropicAdapter(_Adapter):
         self.messages = [{"role": m["role"], "content": m["content"]} for m in self.history]
         self.messages.append({"role": "user", "content": self.user_text})
 
-    def step(self):
+    def step(self, final=False):
         kwargs = dict(model=self.p.model, max_tokens=min(self.p.max_tokens, 16000), system=self.system,
                       tools=self.tools, messages=self.messages,
-                      output_config={"effort": "medium"})
+                      output_config={"effort": self.reasoning})
+        if final:
+            kwargs["tool_choice"] = {"type": "none"}
         if self.p.conf.get("fallback", True):
             kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
         msg = self.p.stream(**kwargs)
@@ -135,9 +146,11 @@ class _AnthropicAdapter(_Adapter):
         calls = [{"id": b.id, "name": b.name, "args": b.input} for b in msg.content if b.type == "tool_use"]
         return text, calls
 
-    def add_results(self, results):
-        self.messages.append({"role": "user", "content": [
-            {"type": "tool_result", "tool_use_id": c["id"], "content": out} for c, out in results]})
+    def add_results(self, results, note=None):
+        content = [{"type": "tool_result", "tool_use_id": c["id"], "content": out} for c, out in results]
+        if note:
+            content.append({"type": "text", "text": note})
+        self.messages.append({"role": "user", "content": content})
 
 
 class _OpenAIAdapter(_Adapter):
@@ -148,10 +161,13 @@ class _OpenAIAdapter(_Adapter):
             [{"role": m["role"], "content": m["content"]} for m in self.history] + \
             [{"role": "user", "content": self.user_text}]
 
-    def step(self):
+    def step(self, final=False):
         kwargs = dict(model=self.p.model, messages=self.messages, tools=self.tools)
+        if final:
+            kwargs["tool_choice"] = "none"
         if self.p._reasoning_model():
             kwargs["max_completion_tokens"] = self.p.max_tokens
+            kwargs["reasoning_effort"] = self.reasoning
         else:
             kwargs.update(max_tokens=min(self.p.max_tokens, 8000), temperature=self.p.temperature)
         resp = self.p.create(**kwargs)
@@ -166,9 +182,11 @@ class _OpenAIAdapter(_Adapter):
             calls.append({"id": tc.id, "name": tc.function.name, "args": args})
         return m.content or "", calls
 
-    def add_results(self, results):
+    def add_results(self, results, note=None):
         for c, out in results:
             self.messages.append({"role": "tool", "tool_call_id": c["id"], "content": out})
+        if note:
+            self.messages.append({"role": "user", "content": note})
 
 
 class _GoogleAdapter(_Adapter):
@@ -187,8 +205,13 @@ class _GoogleAdapter(_Adapter):
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
 
-    def step(self):
-        resp = self.p.call(self.contents, self.config)
+    def step(self, final=False):
+        config = self.config
+        if final:
+            t = self.types
+            config = config.model_copy(update={"tool_config": t.ToolConfig(
+                function_calling_config=t.FunctionCallingConfig(mode="NONE"))})
+        resp = self.p.call(self.contents, config)
         cand = (resp.candidates or [None])[0]
         if cand is None or cand.content is None:
             return "", []
@@ -198,10 +221,12 @@ class _GoogleAdapter(_Adapter):
                  for fc in (resp.function_calls or [])]
         return text, calls
 
-    def add_results(self, results):
+    def add_results(self, results, note=None):
         t = self.types
-        self.contents.append(t.Content(role="user", parts=[
-            t.Part.from_function_response(name=c["name"], response={"result": _json_or_text(out)}) for c, out in results]))
+        parts = [t.Part.from_function_response(name=c["name"], response={"result": _json_or_text(out)}) for c, out in results]
+        if note:
+            parts.append(t.Part.from_text(text=note))
+        self.contents.append(t.Content(role="user", parts=parts))
 
 
 def _json_or_text(out: str):
@@ -220,10 +245,11 @@ class _OllamaAdapter(_Adapter):
             [{"role": m["role"], "content": m["content"]} for m in self.history] + \
             [{"role": "user", "content": self.user_text}]
 
-    def step(self):
+    def step(self, final=False):
         think = bool(self.p.conf.get("think"))
         data = self.p.chat_request({
-            "model": self.p.model, "stream": False, "messages": self.messages, "tools": self.tools, "think": think,
+            "model": self.p.model, "stream": False, "messages": self.messages, "tools": [] if final else self.tools,
+            "think": think,
             "options": {"temperature": self.p.temperature, "num_predict": min(self.p.max_tokens, 8000) * (3 if think else 1)},
         })
         m = data.get("message") or {}
@@ -240,9 +266,11 @@ class _OllamaAdapter(_Adapter):
             calls.append({"id": tc.get("id") or f"call_{i}", "name": fn.get("name"), "args": args})
         return m.get("content") or "", calls
 
-    def add_results(self, results):
+    def add_results(self, results, note=None):
         for c, out in results:
             self.messages.append({"role": "tool", "content": out, "tool_name": c["name"]})
+        if note:
+            self.messages.append({"role": "user", "content": note})
 
 
 def _adapter_for(provider):
@@ -269,29 +297,32 @@ def _clean_history(history) -> list[dict]:
     return out
 
 
-def ask(message: str, history=None, context: dict | None = None, provider=None) -> dict:
+def ask(message: str, history=None, context: dict | None = None, provider=None, effort: str = "medium") -> dict:
     message = (message or "").strip()
     if not message:
         raise AIError("Type a question")
     _check_rate(current_user_id())
     provider = provider or get_provider()
+    level = EFFORTS.get(effort) or EFFORTS["medium"]
     adapter = _adapter_for(provider)(provider, _system_prompt(), _clean_history(history),
-                                     f"{screen_text(context)}\n\n{message[:4000]}")
+                                     f"{screen_text(context)}\n\n{message[:4000]}", level["reasoning"])
     actions: list[dict] = []
     steps: list[dict] = []
     text = ""
     with usage.track(provider, "chat"):
-        for _ in range(MAX_STEPS):
-            text, calls = adapter.step()
-            if not calls:
+        for n in range(level["steps"] + 1):
+            final = n == level["steps"]  # out of lookups: the model must answer with what it has
+            text, calls = adapter.step(final=final)
+            if not calls or final:
+                if final and not text.strip():
+                    text = ("_I ran out of lookups before finding an answer. Try a narrower question, "
+                            "or set the effort to Thorough._")
                 break
             results = []
             for c in calls:
                 out = chat_tools.run_tool(c["name"], c["args"], actions)
                 steps.append({"tool": c["name"], "label": chat_tools.describe_step(c["name"], c["args"])})
                 results.append((c, out))
-            adapter.add_results(results)
-        else:
-            text = (text + "\n\n" if text else "") + "_(Stopped after several lookups — ask me to continue if needed.)_"
+            adapter.add_results(results, WRAP_UP if n == level["steps"] - 1 else None)
     return {"reply": text.strip() or "Done.", "actions": actions, "steps": steps,
             "model": f"{provider.name}:{provider.model}"}

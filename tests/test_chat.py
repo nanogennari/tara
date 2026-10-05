@@ -112,3 +112,16 @@ def test_gemini_adapter_accepts_clipped_tool_output():
     assert _json_or_text('{"a": 1}') == {"a": 1}
     clipped = '{"items": [1, 2..."(truncated — narrow the request)"'
     assert _json_or_text(clipped) == clipped
+
+
+def test_chat_wraps_up_at_the_effort_limit(client, monkeypatch):
+    _seed(client)
+    search = {"role": "assistant", "content": "", "tool_calls": [
+        {"function": {"name": "search_inventory", "arguments": {"query": "paper"}}}]}
+    fake = ScriptedOllama([search] * 4 + [{"role": "assistant", "content": "We have A4 paper."}])
+    monkeypatch.setattr(chat, "get_provider", lambda: fake)
+    r = client.post("/api/ai/chat", json={"message": "what paper do we have?", "effort": "low"})
+    d = r.get_json()
+    assert d["reply"] == "We have A4 paper." and len(d["steps"]) == 4
+    assert fake.requests[-1]["tools"] == []  # final turn: tools disabled
+    assert fake.requests[-1]["messages"][-1] == {"role": "user", "content": chat.WRAP_UP}

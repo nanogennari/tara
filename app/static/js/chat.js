@@ -35,6 +35,8 @@ export function chatComponent() {
     input: "",
     busy: false,
     shareContext: true,
+    effort: localStorage.getItem("chat.effort") || "medium",
+    efforts: { low: "Quick", medium: "Normal", high: "Thorough" },
     messages: JSON.parse(sessionStorage.getItem(KEY) || "[]"),
     abort: null,
     tick: 0, // bumped when the selection / active tab changes so the context label refreshes
@@ -43,6 +45,7 @@ export function chatComponent() {
 
     init() {
       window.addEventListener("chat:toggle", () => this.toggle());
+      this.$watch("effort", (v) => localStorage.setItem("chat.effort", v));
       window.addEventListener("screen:changed", () => this.tick++);
       window.addEventListener("chat:ask", (e) => { this.show(); this.input = e.detail || ""; this.send(); });
       this.$watch("messages", () => {
@@ -75,7 +78,7 @@ export function chatComponent() {
       this.abort = new AbortController();
       try {
         const res = await runJob("POST", "/api/ai/chat", {
-          message: q, history, context: this.shareContext ? this.s.screenContext() : null,
+          message: q, history, context: this.shareContext ? this.s.screenContext() : null, effort: this.effort,
         }, { signal: this.abort.signal });
         this.messages.push({ role: "assistant", content: res.reply, steps: res.steps, model: res.model });
         this.runActions(res.actions || []);

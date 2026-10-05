@@ -467,6 +467,7 @@ label.btn.disabled, .g-big.disabled { opacity: .5; cursor: not-allowed; pointer-
 @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 .chat-foot { border-top: 1px solid var(--border); padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
 .chat-ctx { color: var(--muted); font-weight: 400; min-width: 0; }
+.chat-effort { width: auto; min-height: 26px; padding: 0 6px; font-size: 12px; flex: none; }
 .chat-ctx svg { width: 13px; height: 13px; flex: none; }
 .chat-input { display: flex; gap: 6px; align-items: flex-end; }
 .chat-input textarea { min-height: 38px; max-height: 140px; resize: none; field-sizing: content; }

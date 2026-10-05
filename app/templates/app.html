@@ -306,10 +306,16 @@
       <div class="msg assistant" x-show="busy"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>
     </div>
     <div class="chat-foot">
-      <label class="check small chat-ctx" :title="shareContext ? 'The assistant sees: ' + contextLabel : 'Screen context is not shared'">
-        <input type="checkbox" x-model="shareContext"><i data-lucide="eye"></i>
-        <span class="truncate" x-text="shareContext ? 'Sees: ' + contextLabel : 'Not sharing what is on screen'"></span>
-      </label>
+      <div class="row" style="gap:8px;min-width:0">
+        <label class="check small chat-ctx grow" :title="shareContext ? 'The assistant sees: ' + contextLabel : 'Screen context is not shared'">
+          <input type="checkbox" x-model="shareContext"><i data-lucide="eye"></i>
+          <span class="truncate" x-text="shareContext ? 'Sees: ' + contextLabel : 'Not sharing what is on screen'"></span>
+        </label>
+        <select class="chat-effort" x-model="effort" aria-label="Effort"
+                title="Effort: Quick answers fast; Thorough looks through more tables and reasons longer (slower, uses more tokens)">
+          <template x-for="(label, key) in efforts" :key="key"><option :value="key" x-text="label" :selected="key === effort"></option></template>
+        </select>
+      </div>
       <div class="chat-input">
         <textarea x-ref="input" x-model="input" rows="1" placeholder="Ask about items, boxes, quantities…" @keydown="onKey($event)" :disabled="busy"></textarea>
         <button class="btn btn-primary btn-icon" x-show="!busy" @click="send()" :disabled="!input.trim()" aria-label="Send"><i data-lucide="send-horizontal"></i></button>
